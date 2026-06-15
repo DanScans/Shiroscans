@@ -1,0 +1,223 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { Search, BookmarkCheck, Clock, Heart, User, Settings, LogOut, ChevronDown, Menu, X } from "lucide-react";
+import { useGetMe, useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import logoPath from "@assets/file_0000000028ec71f5bea7a576cf17a0af_1781485787252.png";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+
+export default function Navbar() {
+  const [location, setLocation] = useLocation();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const queryClient = useQueryClient();
+
+  const { data: user } = useGetMe({ query: { queryKey: getGetMeQueryKey(), retry: false, throwOnError: false } });
+
+  const logoutMutation = useLogout({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+        setLocation("/");
+      },
+    },
+  });
+
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      setLocation(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchQuery("");
+    }
+  }
+
+  const navLinks = [
+    { href: "/", label: "Home" },
+    { href: "/latest", label: "Latest" },
+    { href: "/popular", label: "Popular" },
+  ];
+
+  return (
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-md border-b border-white/[0.08]" data-testid="navbar">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16">
+          <div className="flex items-center gap-8">
+            <Link href="/" className="flex items-center gap-2.5 group" data-testid="link-logo">
+              <img src={logoPath} alt="ShiroScans" className="w-8 h-8 rounded-full" />
+              <span className="text-lg font-bold text-white tracking-tight group-hover:text-primary transition-colors">
+                ShiroScans
+              </span>
+            </Link>
+
+            <div className="hidden md:flex items-center gap-1">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    location === link.href
+                      ? "text-primary bg-primary/10"
+                      : "text-[#9CA3AF] hover:text-white hover:bg-white/5"
+                  }`}
+                  data-testid={`link-nav-${link.label.toLowerCase()}`}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <form onSubmit={handleSearch} className="hidden md:flex items-center" data-testid="form-search">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9CA3AF]" />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search manga..."
+                  className="bg-white/5 border border-white/10 rounded-lg pl-9 pr-4 py-1.5 text-sm text-white placeholder-[#9CA3AF] focus:outline-none focus:border-primary/50 focus:bg-white/8 w-48 transition-all focus:w-64"
+                  data-testid="input-search"
+                />
+              </div>
+            </form>
+
+            {user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-white/5 transition-colors" data-testid="button-user-menu">
+                    <Avatar className="w-7 h-7">
+                      <AvatarImage src={user.avatarUrl ?? undefined} />
+                      <AvatarFallback className="bg-primary/20 text-primary text-xs">
+                        {user.username[0]?.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="hidden sm:block text-sm text-white">{user.username}</span>
+                    <ChevronDown className="w-3 h-3 text-[#9CA3AF]" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48 bg-card border-white/10">
+                  <DropdownMenuItem asChild>
+                    <Link href="/profile" className="flex items-center gap-2 cursor-pointer" data-testid="link-profile">
+                      <User className="w-4 h-4" /> Profile
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/bookmarks" className="flex items-center gap-2 cursor-pointer" data-testid="link-bookmarks">
+                      <BookmarkCheck className="w-4 h-4" /> Bookmarks
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/history" className="flex items-center gap-2 cursor-pointer" data-testid="link-history">
+                      <Clock className="w-4 h-4" /> History
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/favourites" className="flex items-center gap-2 cursor-pointer" data-testid="link-favourites">
+                      <Heart className="w-4 h-4" /> Favourites
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-white/10" />
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings" className="flex items-center gap-2 cursor-pointer" data-testid="link-settings">
+                      <Settings className="w-4 h-4" /> Settings
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-white/10" />
+                  <DropdownMenuItem
+                    className="flex items-center gap-2 text-destructive cursor-pointer"
+                    onClick={() => logoutMutation.mutate(undefined)}
+                    data-testid="button-logout"
+                  >
+                    <LogOut className="w-4 h-4" /> Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <div className="hidden md:flex items-center gap-2">
+                <Button variant="ghost" size="sm" asChild className="text-[#9CA3AF] hover:text-white">
+                  <Link href="/login" data-testid="link-login">Login</Link>
+                </Button>
+                <Button size="sm" asChild className="bg-primary hover:bg-primary/90">
+                  <Link href="/register" data-testid="link-register">Register</Link>
+                </Button>
+              </div>
+            )}
+
+            <button
+              className="md:hidden p-2 rounded-md text-[#9CA3AF] hover:text-white hover:bg-white/5"
+              onClick={() => setMobileOpen(!mobileOpen)}
+              data-testid="button-mobile-menu"
+            >
+              {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {mobileOpen && (
+        <div className="md:hidden border-t border-white/[0.08] bg-card/95 backdrop-blur-md">
+          <div className="px-4 py-4 space-y-1">
+            <form onSubmit={handleSearch} className="flex mb-3" data-testid="form-search-mobile">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9CA3AF]" />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search manga..."
+                  className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder-[#9CA3AF] focus:outline-none focus:border-primary/50"
+                  data-testid="input-search-mobile"
+                />
+              </div>
+            </form>
+            {navLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`block px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  location === link.href ? "text-primary bg-primary/10" : "text-[#9CA3AF] hover:text-white hover:bg-white/5"
+                }`}
+                onClick={() => setMobileOpen(false)}
+              >
+                {link.label}
+              </Link>
+            ))}
+            {user ? (
+              <>
+                <Link href="/profile" className="block px-3 py-2 rounded-md text-sm text-[#9CA3AF] hover:text-white hover:bg-white/5" onClick={() => setMobileOpen(false)}>Profile</Link>
+                <Link href="/bookmarks" className="block px-3 py-2 rounded-md text-sm text-[#9CA3AF] hover:text-white hover:bg-white/5" onClick={() => setMobileOpen(false)}>Bookmarks</Link>
+                <Link href="/history" className="block px-3 py-2 rounded-md text-sm text-[#9CA3AF] hover:text-white hover:bg-white/5" onClick={() => setMobileOpen(false)}>History</Link>
+                <Link href="/favourites" className="block px-3 py-2 rounded-md text-sm text-[#9CA3AF] hover:text-white hover:bg-white/5" onClick={() => setMobileOpen(false)}>Favourites</Link>
+                <Link href="/settings" className="block px-3 py-2 rounded-md text-sm text-[#9CA3AF] hover:text-white hover:bg-white/5" onClick={() => setMobileOpen(false)}>Settings</Link>
+                <button
+                  className="block w-full text-left px-3 py-2 rounded-md text-sm text-destructive hover:bg-white/5"
+                  onClick={() => { logoutMutation.mutate(undefined); setMobileOpen(false); }}
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <div className="flex gap-2 pt-2">
+                <Button variant="ghost" size="sm" asChild className="flex-1">
+                  <Link href="/login" onClick={() => setMobileOpen(false)}>Login</Link>
+                </Button>
+                <Button size="sm" asChild className="flex-1 bg-primary hover:bg-primary/90">
+                  <Link href="/register" onClick={() => setMobileOpen(false)}>Register</Link>
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </nav>
+  );
+}

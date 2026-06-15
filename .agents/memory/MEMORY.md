@@ -1,0 +1,1 @@
+- [MangaDex API setup](mangadex-api.md) — CoorenLabs DNS unresolvable from Replit; MangaDex + AniList work fine. Array param pitfall documented.
