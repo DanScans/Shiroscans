@@ -256,6 +256,49 @@ export const GetMangaTagsResponse = zod.array(GetMangaTagsResponseItem)
 
 
 /**
+ * @summary Get all available manga sources
+ */
+export const GetMangaSourcesResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "status": zod.string(),
+  "type": zod.string().nullish()
+})
+export const GetMangaSourcesResponse = zod.array(GetMangaSourcesResponseItem)
+
+
+/**
+ * @summary Get frontpage section from a source
+ */
+export const GetMangaFrontpageBody = zod.object({
+  "source": zod.string(),
+  "section": zod.string(),
+  "page": zod.number().optional(),
+  "limit": zod.number().optional(),
+  "days": zod.number().nullish()
+})
+
+export const GetMangaFrontpageResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "coverImage": zod.string(),
+  "provider": zod.string(),
+  "type": zod.string().nullish(),
+  "status": zod.string().nullish(),
+  "rating": zod.number().nullish(),
+  "latestChapter": zod.string().nullish(),
+  "genres": zod.array(zod.string()),
+  "isNew": zod.boolean(),
+  "updatedAt": zod.string().nullish()
+})),
+  "source": zod.string(),
+  "section": zod.string(),
+  "page": zod.number()
+})
+
+
+/**
  * @summary Register a new user
  */
 export const registerBodyUsernameMin = 3;

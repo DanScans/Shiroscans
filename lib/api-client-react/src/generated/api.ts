@@ -27,6 +27,8 @@ import type {
   ErrorResponse,
   FavouriteInput,
   FavouriteItem,
+  FrontpageInput,
+  FrontpagePage,
   GetLatestMangaParams,
   GetPopularMangaParams,
   GetRandomMangaParams,
@@ -38,6 +40,7 @@ import type {
   MangaItem,
   MangaPage,
   MangaSeries,
+  MangaSource,
   MessageResponse,
   PasswordChange,
   ProfileUpdate,
@@ -798,6 +801,154 @@ export function useGetMangaTags<TData = Awaited<ReturnType<typeof getMangaTags>>
 
 
 
+
+export const getGetMangaSourcesUrl = () => {
+
+
+
+
+  return `/api/manga/sources`
+}
+
+/**
+ * @summary Get all available manga sources
+ */
+export const getMangaSources = async ( options?: RequestInit): Promise<MangaSource[]> => {
+
+  return customFetch<MangaSource[]>(getGetMangaSourcesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMangaSourcesQueryKey = () => {
+    return [
+    `/api/manga/sources`
+    ] as const;
+    }
+
+
+export const getGetMangaSourcesQueryOptions = <TData = Awaited<ReturnType<typeof getMangaSources>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMangaSources>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMangaSourcesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMangaSources>>> = ({ signal }) => getMangaSources({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMangaSources>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMangaSourcesQueryResult = NonNullable<Awaited<ReturnType<typeof getMangaSources>>>
+export type GetMangaSourcesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get all available manga sources
+ */
+
+export function useGetMangaSources<TData = Awaited<ReturnType<typeof getMangaSources>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMangaSources>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMangaSourcesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetMangaFrontpageUrl = () => {
+
+
+
+
+  return `/api/manga/frontpage`
+}
+
+/**
+ * @summary Get frontpage section from a source
+ */
+export const getMangaFrontpage = async (frontpageInput: FrontpageInput, options?: RequestInit): Promise<FrontpagePage> => {
+
+  return customFetch<FrontpagePage>(getGetMangaFrontpageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      frontpageInput,)
+  }
+);}
+
+
+
+
+export const getGetMangaFrontpageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getMangaFrontpage>>, TError,{data: BodyType<FrontpageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof getMangaFrontpage>>, TError,{data: BodyType<FrontpageInput>}, TContext> => {
+
+const mutationKey = ['getMangaFrontpage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof getMangaFrontpage>>, {data: BodyType<FrontpageInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  getMangaFrontpage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GetMangaFrontpageMutationResult = NonNullable<Awaited<ReturnType<typeof getMangaFrontpage>>>
+    export type GetMangaFrontpageMutationBody = BodyType<FrontpageInput>
+    export type GetMangaFrontpageMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Get frontpage section from a source
+ */
+export const useGetMangaFrontpage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getMangaFrontpage>>, TError,{data: BodyType<FrontpageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof getMangaFrontpage>>,
+        TError,
+        {data: BodyType<FrontpageInput>},
+        TContext
+      > => {
+      return useMutation(getGetMangaFrontpageMutationOptions(options));
+    }
 
 export const getRegisterUrl = () => {
 

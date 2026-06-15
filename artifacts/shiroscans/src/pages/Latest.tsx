@@ -8,9 +8,17 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const PROVIDERS = [
-  { value: "allmanga", label: "AllManga" },
-  { value: "mangaball", label: "MangaBall" },
-  { value: "mangafire", label: "MangaFire" },
+  { value: "mangadex", label: "MangaDex" },
+  { value: "comix", label: "Comick" },
+  { value: "asurascan", label: "AsuraScans" },
+  { value: "weebcentral", label: "WeebCentral" },
+  { value: "mangago", label: "Mangago" },
+  { value: "mangakatana", label: "MangaKatana" },
+  { value: "flamecomics", label: "FlameComics" },
+  { value: "thunderscans", label: "Thunderscans" },
+  { value: "reaperscans", label: "Reaper Scans" },
+  { value: "vortex-scans", label: "Vortex Scans" },
+  { value: "raven-scans", label: "Raven Scans" },
 ];
 
 const TYPES = ["Manga", "Manhwa", "Manhua", "Novel"];
@@ -18,7 +26,7 @@ const STATUSES = ["Ongoing", "Completed", "Hiatus", "Cancelled"];
 
 export default function LatestPage() {
   const [page, setPage] = useState(1);
-  const [provider, setProvider] = useState("allmanga");
+  const [provider, setProvider] = useState("mangadex");
   const [type, setType] = useState<string | undefined>();
   const [status, setStatus] = useState<string | undefined>();
   const [genre, setGenre] = useState<string | undefined>();

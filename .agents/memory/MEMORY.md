@@ -1,1 +1,2 @@
 - [MangaDex API setup](mangadex-api.md) — CoorenLabs DNS unresolvable from Replit; MangaDex + AniList work fine. Array param pitfall documented.
+- [ShiroScans Comick Stack](comick-stack.md) — Multi-source stack: Comick Source API (GooglyBlox) primary + MangaDex CDN; real source IDs differ from display names.

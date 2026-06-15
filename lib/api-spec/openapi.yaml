@@ -248,6 +248,40 @@ paths:
                 items:
                   $ref: "#/components/schemas/Tag"
 
+  /manga/sources:
+    get:
+      operationId: getMangaSources
+      tags: [manga]
+      summary: Get all available manga sources
+      responses:
+        "200":
+          description: Source list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MangaSource"
+
+  /manga/frontpage:
+    post:
+      operationId: getMangaFrontpage
+      tags: [manga]
+      summary: Get frontpage section from a source
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FrontpageInput"
+      responses:
+        "200":
+          description: Frontpage section items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FrontpagePage"
+
   /auth/register:
     post:
       operationId: register
@@ -862,6 +896,58 @@ components:
       required:
         - id
         - name
+
+    MangaSource:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+        type:
+          type: ["string", "null"]
+      required:
+        - id
+        - name
+        - status
+
+    FrontpageInput:
+      type: object
+      properties:
+        source:
+          type: string
+        section:
+          type: string
+        page:
+          type: integer
+        limit:
+          type: integer
+        days:
+          type: ["integer", "null"]
+      required:
+        - source
+        - section
+
+    FrontpagePage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MangaItem"
+        source:
+          type: string
+        section:
+          type: string
+        page:
+          type: integer
+      required:
+        - items
+        - source
+        - section
+        - page
 
     AuthUser:
       type: object

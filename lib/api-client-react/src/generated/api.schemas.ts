@@ -111,6 +111,30 @@ export interface Tag {
   count?: number | null;
 }
 
+export interface MangaSource {
+  id: string;
+  name: string;
+  status: string;
+  /** @nullable */
+  type?: string | null;
+}
+
+export interface FrontpageInput {
+  source: string;
+  section: string;
+  page?: number;
+  limit?: number;
+  /** @nullable */
+  days?: number | null;
+}
+
+export interface FrontpagePage {
+  items: MangaItem[];
+  source: string;
+  section: string;
+  page: number;
+}
+
 export interface AuthUser {
   id: number;
   username: string;
