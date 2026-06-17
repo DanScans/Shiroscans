@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useParams } from "wouter";
 import { BookmarkCheck, Bookmark, Heart, HeartOff, Star, ChevronDown, ChevronUp, BookOpen, Calendar, User } from "lucide-react";
+import StarRating from "@/components/StarRating";
 import {
   useGetMangaSeries, getGetMangaSeriesQueryKey,
   useGetMe, getGetMeQueryKey,
@@ -200,6 +201,11 @@ export default function SeriesPage() {
               </Button>
             </div>
           </div>
+        </div>
+
+        {/* Star Rating */}
+        <div className="mb-6">
+          <StarRating provider={safeProvider} seriesId={safeId} />
         </div>
 
         <div>

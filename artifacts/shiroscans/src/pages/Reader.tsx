@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "wouter";
 import { ChevronLeft, ChevronRight, Home, MessageSquare, Heart, Flame, Star, ThumbsUp, Frown, List } from "lucide-react";
+import CommentsSection from "@/components/CommentsSection";
 import {
   useGetChapterPages, getGetChapterPagesQueryKey,
   useGetReactions, getGetReactionsQueryKey,
@@ -205,6 +206,13 @@ export default function ReaderPage() {
                 })}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Comments */}
+        {safeProvider && safeSeriesId && safeChapterId && (
+          <div onClick={(e) => e.stopPropagation()}>
+            <CommentsSection provider={safeProvider} seriesId={safeSeriesId} chapterId={safeChapterId} />
           </div>
         )}
       </div>

@@ -866,6 +866,7 @@ const PROXY_ALLOWED_HOSTS = new Set([
   // FlameComics
   "flamecomics.xyz",
   "flamecomics.me",
+  "cdn.flamecomics.xyz",
   // Thunderscans
   "api.thunderscans.com",
   "thunderscans.com",

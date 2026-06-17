@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Search, BookmarkCheck, Clock, Heart, User, Settings, LogOut, ChevronDown, Menu, X, Compass } from "lucide-react";
+import { Search, BookmarkCheck, Clock, Heart, User, Settings, LogOut, ChevronDown, Menu, X, Compass, Flame, BarChart2 } from "lucide-react";
 import { useGetMe, useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import logoPath from "@assets/file_0000000028ec71f5bea7a576cf17a0af_1781485787252.png";
@@ -44,6 +44,8 @@ export default function Navbar() {
     { href: "/", label: "Home" },
     { href: "/latest", label: "Latest" },
     { href: "/popular", label: "Popular" },
+    { href: "/manhwa", label: "Manhwa", icon: <Flame className="w-3.5 h-3.5 text-orange-400" /> },
+    { href: "/rankings", label: "Rankings", icon: <BarChart2 className="w-3.5 h-3.5 text-amber-400" /> },
     { href: "/search", label: "Browse", icon: <Compass className="w-3.5 h-3.5" /> },
   ];
 
