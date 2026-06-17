@@ -73,8 +73,12 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
+      // "lax" provides CSRF protection and works for same-origin deployments
+      // (frontend and API share the same Replit proxy domain).
+      // Using "none" would require explicit CSRF token defenses.
+      sameSite: "lax",
+      // Secure flag on in production (HTTPS), off in dev (HTTP localhost)
       secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },
   }),
