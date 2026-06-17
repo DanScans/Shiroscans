@@ -1,3 +1,4 @@
 - [MangaDex API setup](mangadex-api.md) — CoorenLabs DNS unresolvable from Replit; MangaDex + AniList work fine. Array param pitfall documented.
 - [ShiroScans Comick Stack](comick-stack.md) — Multi-source stack: Comick Source API (GooglyBlox) primary + MangaDex CDN; real source IDs differ from display names.
 - [comick-source-api local service](comick-local-service.md) — Next.js 14 dev startup takes 4s+; use configureWorkflow WITHOUT waitForPort or it always fails. next binary path: node_modules/next/dist/bin/next (no .bin symlink). comix.to blocks Replit IPs (404/403) so frontpage falls back to MangaDex. WeebCentral/mgeko/raven-scans work from Replit for search.
+- [ShiroScans brand color](shiroscans-brand.md) — Primary color #036443 = hsl(160, 94%, 20%); port conflict kill pattern documented.

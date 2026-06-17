@@ -114,15 +114,15 @@
   --sidebar: 240 20% 9%;
   --sidebar-foreground: 0 0% 100%;
   --sidebar-border: 240 17% 18%;
-  --sidebar-primary: 163 77% 35%;
+  --sidebar-primary: 160 94% 20%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 237 17% 13%;
   --sidebar-accent-foreground: 0 0% 100%;
-  --sidebar-ring: 163 77% 35%;
+  --sidebar-ring: 160 94% 20%;
   --popover: 240 20% 9%;
   --popover-foreground: 0 0% 100%;
   --popover-border: 240 17% 18%;
-  --primary: 163 77% 35%;
+  --primary: 160 94% 20%;
   --primary-foreground: 0 0% 100%;
   --secondary: 237 17% 13%;
   --secondary-foreground: 220 9% 68%;
@@ -133,8 +133,8 @@
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
   --input: 240 17% 18%;
-  --ring: 163 77% 35%;
-  --chart-1: 163 77% 35%;
+  --ring: 160 94% 20%;
+  --chart-1: 160 94% 20%;
   --chart-2: 237 17% 13%;
   --chart-3: 240 20% 9%;
   --chart-4: 240 33% 6%;
@@ -205,15 +205,15 @@
   --sidebar: 240 20% 9%;
   --sidebar-foreground: 0 0% 100%;
   --sidebar-border: 240 17% 18%;
-  --sidebar-primary: 163 77% 35%;
+  --sidebar-primary: 160 94% 20%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 237 17% 13%;
   --sidebar-accent-foreground: 0 0% 100%;
-  --sidebar-ring: 163 77% 35%;
+  --sidebar-ring: 160 94% 20%;
   --popover: 240 20% 9%;
   --popover-foreground: 0 0% 100%;
   --popover-border: 240 17% 18%;
-  --primary: 163 77% 35%;
+  --primary: 160 94% 20%;
   --primary-foreground: 0 0% 100%;
   --secondary: 237 17% 13%;
   --secondary-foreground: 220 9% 68%;
@@ -226,8 +226,8 @@
 
   /* Used as the border around inputs. Dark mode: Should be a border that is light enough to have high contrast when rendered on a --card background. More contrast than standard --border */
   --input: 240 17% 18%;
-  --ring: 163 77% 35%;
-  --chart-1: 163 77% 35%;
+  --ring: 160 94% 20%;
+  --chart-1: 160 94% 20%;
   --chart-2: 237 17% 13%;
   --chart-3: 240 20% 9%;
   --chart-4: 240 33% 6%;

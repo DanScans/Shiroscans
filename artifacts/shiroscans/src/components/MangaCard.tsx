@@ -36,7 +36,7 @@ export default function MangaCard({
   return (
     <Link
       href={`/series/${provider}/${encodeURIComponent(id)}`}
-      className="group relative block rounded-xl overflow-hidden bg-[#111118] border border-white/[0.07] hover:border-primary/40 transition-all duration-300 hover:shadow-xl hover:shadow-primary/10 hover:-translate-y-1"
+      className="group relative block rounded-lg overflow-hidden bg-[#111118] border border-white/[0.06] hover:border-primary/35 transition-all duration-250 hover:shadow-lg hover:shadow-primary/10 hover:-translate-y-0.5"
       data-testid={`card-manga-${id}`}
     >
       <div className="aspect-[2/3] relative overflow-hidden bg-[#0d0d14]">
@@ -44,7 +44,7 @@ export default function MangaCard({
           <img
             src={proxyImage(coverImage)}
             alt={title}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+            className="w-full h-full object-cover transition-transform duration-400 group-hover:scale-105"
             loading="lazy"
             onError={(e) => {
               const img = e.target as HTMLImageElement;
@@ -54,50 +54,52 @@ export default function MangaCard({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#111118] to-[#0a0a10]">
-            <BookOpen className="w-10 h-10 text-muted-foreground/20" />
+            <BookOpen className="w-8 h-8 text-muted-foreground/20" />
           </div>
         )}
 
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-250" />
 
         {isNew && (
-          <span className="absolute top-2 left-2 bg-primary text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md tracking-wide uppercase shadow-lg">
+          <span className="absolute top-1.5 left-1.5 bg-primary text-white text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide shadow-md">
             NEW
           </span>
         )}
-        {type && (
-          <span className="absolute top-2 right-2 bg-black/70 text-white/90 text-[9px] px-1.5 py-0.5 rounded-md backdrop-blur-sm font-medium">
+        {type && !isNew && (
+          <span className="absolute top-1.5 left-1.5 bg-black/65 text-white/80 text-[9px] px-1.5 py-0.5 rounded backdrop-blur-sm font-medium">
             {type}
           </span>
         )}
+
+        {rating !== null && rating !== undefined && (
+          <span className="absolute top-1.5 right-1.5 flex items-center gap-0.5 bg-black/70 text-amber-400 text-[9px] font-semibold px-1.5 py-0.5 rounded backdrop-blur-sm">
+            <Star className="w-2.5 h-2.5 fill-amber-400" />
+            {typeof rating === "number" ? rating.toFixed(1) : rating}
+          </span>
+        )}
+
         {latestChapter && (
-          <div className="absolute bottom-0 left-0 right-0 px-2.5 py-2 bg-gradient-to-t from-black/90 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-            <p className="text-xs text-primary font-semibold truncate">{latestChapter}</p>
+          <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5 bg-gradient-to-t from-black/90 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-250">
+            <p className="text-[10px] text-primary font-semibold truncate">{latestChapter}</p>
           </div>
         )}
       </div>
 
-      <div className="p-2.5 pb-3">
-        <h3 className="text-xs font-semibold text-white/90 leading-tight line-clamp-2 group-hover:text-primary transition-colors duration-200" data-testid={`text-title-${id}`}>
+      <div className="p-2 pb-2.5">
+        <h3 className="text-[11px] font-semibold text-white/90 leading-snug line-clamp-2 group-hover:text-primary transition-colors duration-200" data-testid={`text-title-${id}`}>
           {title}
         </h3>
-        <div className="flex items-center justify-between mt-1.5 gap-1">
-          {status && (
-            <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded-md ${
+        {status && (
+          <div className="mt-1">
+            <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${
               status.toLowerCase().includes("ongoing") ? "bg-emerald-500/15 text-emerald-400" :
               status.toLowerCase().includes("completed") ? "bg-blue-500/15 text-blue-400" :
-              "bg-white/8 text-white/40"
+              "bg-white/8 text-white/35"
             }`}>
               {status}
             </span>
-          )}
-          {rating && (
-            <span className="flex items-center gap-0.5 text-[9px] text-amber-400 ml-auto">
-              <Star className="w-2.5 h-2.5 fill-amber-400" />
-              {typeof rating === "number" ? rating.toFixed(1) : rating}
-            </span>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </Link>
   );
@@ -105,9 +107,9 @@ export default function MangaCard({
 
 export function MangaCardSkeleton() {
   return (
-    <div className="rounded-xl overflow-hidden bg-[#111118] border border-white/[0.07]">
+    <div className="rounded-lg overflow-hidden bg-[#111118] border border-white/[0.06]">
       <Skeleton className="aspect-[2/3] w-full bg-[#1a1a24]" />
-      <div className="p-2.5 space-y-1.5">
+      <div className="p-2 space-y-1">
         <Skeleton className="h-2.5 w-full bg-[#1a1a24]" />
         <Skeleton className="h-2.5 w-2/3 bg-[#1a1a24]" />
       </div>
