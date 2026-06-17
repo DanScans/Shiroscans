@@ -161,7 +161,7 @@ export default function ManhwaPage() {
           </div>
           <div>
             <h1 className="text-xl font-black text-white tracking-tight">Manhwa</h1>
-            <p className="text-xs text-white/40">Powered by FlameComics</p>
+            <p className="text-xs text-white/40">Korean webtoons &amp; manhwa</p>
           </div>
         </div>
 

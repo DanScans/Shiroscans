@@ -2,6 +2,28 @@ import { Router, type IRouter } from "express";
 
 const router: IRouter = Router();
 
+// ─── Simple TTL in-memory cache ───────────────────────────────────────────────
+type CacheEntry = { data: unknown; expiresAt: number };
+const _apiCache = new Map<string, CacheEntry>();
+function withCache<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
+  const hit = _apiCache.get(key);
+  if (hit && Date.now() < hit.expiresAt) return Promise.resolve(hit.data as T);
+  return fn().then((data) => {
+    _apiCache.set(key, { data, expiresAt: Date.now() + ttlMs });
+    return data;
+  });
+}
+
+// ─── Image buffer cache (avoids round-tripping same image twice) ───────────────
+const _imgCache = new Map<string, { buf: Buffer; ct: string; ts: number }>();
+const IMG_CACHE_MAX = 400;
+const IMG_CACHE_TTL = 6 * 3600 * 1000; // 6 hours
+function pruneImgCache() {
+  if (_imgCache.size <= IMG_CACHE_MAX) return;
+  const sorted = [..._imgCache.entries()].sort((a, b) => a[1].ts - b[1].ts);
+  sorted.slice(0, sorted.length - IMG_CACHE_MAX).forEach(([k]) => _imgCache.delete(k));
+}
+
 // ─── Base URLs ──────────────────────────────────────────────────────────────
 // LOCAL comick-source-api clone runs at port 3001
 // Fall back to the hosted instance if local is unavailable
@@ -81,9 +103,11 @@ interface StreamingSearchLine {
 
 // ─── Comick Source API client (local-first, remote fallback) ─────────────────
 
-async function comickFetch(endpoint: string, init: RequestInit, timeoutMs = 25000): Promise<Response> {
+async function comickFetch(endpoint: string, init: RequestInit, timeoutMs = 8000): Promise<Response> {
+  // Try local first with a very short timeout — if nothing answers in 1.5s, go remote immediately
+  const localTimeout = 1500;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), localTimeout);
   try {
     const res = await fetch(`${COMICK_LOCAL}${endpoint}`, {
       ...init,
@@ -104,13 +128,13 @@ async function comickFetch(endpoint: string, init: RequestInit, timeoutMs = 2500
   }
 }
 
-async function comickPost<T>(endpoint: string, body: unknown, timeoutMs = 25000): Promise<T> {
+async function comickPost<T>(endpoint: string, body: unknown, timeoutMs = 8000): Promise<T> {
   const res = await comickFetch(endpoint, { method: "POST", body: JSON.stringify(body) }, timeoutMs);
   if (!res.ok) throw new Error(`Comick API ${endpoint} returned ${res.status}`);
   return res.json() as Promise<T>;
 }
 
-async function comickGet<T>(endpoint: string, timeoutMs = 15000): Promise<T> {
+async function comickGet<T>(endpoint: string, timeoutMs = 8000): Promise<T> {
   const res = await comickFetch(endpoint, { method: "GET" }, timeoutMs);
   if (!res.ok) throw new Error(`Comick API ${endpoint} returned ${res.status}`);
   return res.json() as Promise<T>;
@@ -328,48 +352,30 @@ router.get("/manga/sources", async (_req, res): Promise<void> => {
   }
 });
 
-// GET /manga/home — Comick frontpage trending + latest + new, MangaDex as fallback
+// GET /manga/home — MangaDex latest + popular (cached 5 min)
 router.get("/manga/home", async (req, res): Promise<void> => {
   try {
-    const [trendingResult, latestResult, newResult, mdxLatestResult, mdxPopularResult] = await Promise.allSettled([
-      comickPost<FrontpageResponse>("/api/frontpage", { source: "comix", section: "trending", page: 1, limit: 20, days: 7 }),
-      comickPost<FrontpageResponse>("/api/frontpage", { source: "comix", section: "latest_hot", page: 1, limit: 20 }),
-      comickPost<FrontpageResponse>("/api/frontpage", { source: "comix", section: "recently_added", page: 1, limit: 12 }),
-      mdx<{ data: MdxManga[] }>("/manga", {
-        limit: 20, "order[latestUploadedChapter]": "desc", "includes[]": ["cover_art"],
-        "contentRating[]": ["safe", "suggestive"], "availableTranslatedLanguage[]": ["en"],
-      }),
-      mdx<{ data: MdxManga[] }>("/manga", {
-        limit: 20, "order[followedCount]": "desc", "includes[]": ["cover_art"],
-        "contentRating[]": ["safe", "suggestive"], "availableTranslatedLanguage[]": ["en"],
-      }),
-    ]);
-
-    const extractComickSection = (result: PromiseSettledResult<FrontpageResponse>, source: string) => {
-      if (result.status !== "fulfilled") return [];
-      // Correct response shape: { source, sourceName, section: { items: [...] } }
-      const items = result.value.section?.items ?? [];
-      return items.map((item) => normalizeComickItem(item, source));
-    };
-
-    const trendingItems = extractComickSection(trendingResult, "comix");
-    const latestItems = extractComickSection(latestResult, "comix");
-    const newItems = extractComickSection(newResult, "comix");
-
-    const mdxLatest = mdxLatestResult.status === "fulfilled"
-      ? mdxLatestResult.value.data.map((m) => normalizeMdxManga(m, extractCoverFileName(m)))
-      : [];
-    const mdxPopular = mdxPopularResult.status === "fulfilled"
-      ? mdxPopularResult.value.data.map((m) => normalizeMdxManga(m, extractCoverFileName(m)))
-      : [];
-
-    // Use Comick if available, MangaDex as fallback
-    const featured = trendingItems.length >= 6 ? trendingItems.slice(0, 6) : mdxPopular.slice(0, 6);
-    const latestUpdates = latestItems.length > 0 ? latestItems : mdxLatest;
-    const popularNow = trendingItems.length > 0 ? trendingItems : mdxPopular;
-    const newSeries = newItems.length > 0 ? newItems : [];
-
-    res.json({ featured, latestUpdates, popularNow, newSeries });
+    const payload = await withCache("manga:home", 5 * 60_000, async () => {
+      const [mdxLatestResult, mdxPopularResult] = await Promise.allSettled([
+        mdx<{ data: MdxManga[] }>("/manga", {
+          limit: 20, "order[latestUploadedChapter]": "desc", "includes[]": ["cover_art"],
+          "contentRating[]": ["safe", "suggestive"], "availableTranslatedLanguage[]": ["en"],
+        }),
+        mdx<{ data: MdxManga[] }>("/manga", {
+          limit: 20, "order[followedCount]": "desc", "includes[]": ["cover_art"],
+          "contentRating[]": ["safe", "suggestive"], "availableTranslatedLanguage[]": ["en"],
+        }),
+      ]);
+      const mdxLatest = mdxLatestResult.status === "fulfilled"
+        ? mdxLatestResult.value.data.map((m) => normalizeMdxManga(m, extractCoverFileName(m)))
+        : [];
+      const mdxPopular = mdxPopularResult.status === "fulfilled"
+        ? mdxPopularResult.value.data.map((m) => normalizeMdxManga(m, extractCoverFileName(m)))
+        : [];
+      return { featured: mdxPopular.slice(0, 6), latestUpdates: mdxLatest, popularNow: mdxPopular, newSeries: [] };
+    });
+    res.setHeader("Cache-Control", "public, max-age=240, s-maxage=300");
+    res.json(payload);
   } catch (err) {
     req.log.error({ err }, "Failed to fetch home feed");
     res.json({ featured: [], latestUpdates: [], popularNow: [], newSeries: [] });
@@ -401,23 +407,28 @@ router.get("/manga/latest", async (req, res): Promise<void> => {
   const status = req.query.status ? String(req.query.status).toLowerCase() : undefined;
   const genre = req.query.genre ? String(req.query.genre) : undefined;
   const offset = (page - 1) * 20;
+  const cacheKey = `manga:latest:${provider}:${page}:${type ?? ""}:${status ?? ""}:${genre ?? ""}`;
 
   if (provider === "mangadex") {
     try {
-      const params: Record<string, string | string[] | number | boolean | undefined> = {
-        limit: 20, offset, "order[latestUploadedChapter]": "desc", "includes[]": ["cover_art"],
-        "contentRating[]": ["safe", "suggestive"], "availableTranslatedLanguage[]": ["en"],
-      };
-      if (status && ["ongoing", "completed", "hiatus", "cancelled"].includes(status)) params["status[]"] = [status];
-      const origLangs = typeToOriginalLanguage(type);
-      if (origLangs?.length) params["originalLanguage[]"] = origLangs;
-      if (genre) {
-        const tagId = await getMdxTagId(genre);
-        if (tagId) params["includedTags[]"] = [tagId];
-      }
-      const data = await mdx<{ data: MdxManga[]; total: number }>("/manga", params);
-      const items = data.data.map((m) => normalizeMdxManga(m, extractCoverFileName(m)));
-      res.json({ items, page, hasMore: offset + items.length < data.total });
+      const result = await withCache(cacheKey, 3 * 60_000, async () => {
+        const params: Record<string, string | string[] | number | boolean | undefined> = {
+          limit: 20, offset, "order[latestUploadedChapter]": "desc", "includes[]": ["cover_art"],
+          "contentRating[]": ["safe", "suggestive"], "availableTranslatedLanguage[]": ["en"],
+        };
+        if (status && ["ongoing", "completed", "hiatus", "cancelled"].includes(status)) params["status[]"] = [status];
+        const origLangs = typeToOriginalLanguage(type);
+        if (origLangs?.length) params["originalLanguage[]"] = origLangs;
+        if (genre) {
+          const tagId = await getMdxTagId(genre);
+          if (tagId) params["includedTags[]"] = [tagId];
+        }
+        const data = await mdx<{ data: MdxManga[]; total: number }>("/manga", params);
+        const items = data.data.map((m) => normalizeMdxManga(m, extractCoverFileName(m)));
+        return { items, page, hasMore: offset + items.length < data.total };
+      });
+      res.setHeader("Cache-Control", "public, max-age=120");
+      res.json(result);
     } catch (err) {
       req.log.error({ err }, "MangaDex latest failed");
       res.json({ items: [], page, hasMore: false });
@@ -426,21 +437,24 @@ router.get("/manga/latest", async (req, res): Promise<void> => {
   }
 
   try {
-    const data = await comickPost<FrontpageResponse>("/api/frontpage", {
-      source: provider, section: "latest_hot", page, limit: 24,
+    const result = await withCache(cacheKey, 3 * 60_000, async () => {
+      const data = await comickPost<FrontpageResponse>("/api/frontpage", {
+        source: provider, section: "latest_hot", page, limit: 24,
+      });
+      const raw = data.section?.items ?? [];
+      const items = raw.map((item) => normalizeComickItem(item, provider)).filter((item) => {
+        if (status && item.status && item.status.toLowerCase() !== status.toLowerCase()) return false;
+        if (type && item.type && item.type.toLowerCase() !== type.toLowerCase()) return false;
+        if (genre && item.genres?.length) {
+          const g = genre.toLowerCase();
+          if (!item.genres.some((ig) => ig.toLowerCase() === g)) return false;
+        }
+        return true;
+      });
+      return { items, page, hasMore: raw.length >= 24 };
     });
-    const raw = data.section?.items ?? [];
-    const items = raw.map((item) => normalizeComickItem(item, provider)).filter((item) => {
-      if (status && item.status && item.status.toLowerCase() !== status.toLowerCase()) return false;
-      if (type && item.type && item.type.toLowerCase() !== type.toLowerCase()) return false;
-      // genre post-filtering: comick frontpage items include genres only if returned by scraper
-      if (genre && item.genres?.length) {
-        const g = genre.toLowerCase();
-        if (!item.genres.some((ig) => ig.toLowerCase() === g)) return false;
-      }
-      return true;
-    });
-    res.json({ items, page, hasMore: raw.length >= 24 });
+    res.setHeader("Cache-Control", "public, max-age=120");
+    res.json(result);
   } catch (err) {
     req.log.error({ err }, "Comick latest failed");
     res.json({ items: [], page, hasMore: false });
@@ -455,23 +469,28 @@ router.get("/manga/popular", async (req, res): Promise<void> => {
   const type = req.query.type ? String(req.query.type) : undefined;
   const genre = req.query.genre ? String(req.query.genre) : undefined;
   const offset = (page - 1) * 20;
+  const cacheKey = `manga:popular:${provider}:${page}:${type ?? ""}:${status ?? ""}:${genre ?? ""}`;
 
   if (provider === "mangadex") {
     try {
-      const params: Record<string, string | string[] | number | boolean | undefined> = {
-        limit: 20, offset, "order[followedCount]": "desc", "includes[]": ["cover_art"],
-        "contentRating[]": ["safe", "suggestive"], "availableTranslatedLanguage[]": ["en"],
-      };
-      if (status && ["ongoing", "completed", "hiatus", "cancelled"].includes(status)) params["status[]"] = [status];
-      const origLangs = typeToOriginalLanguage(type);
-      if (origLangs?.length) params["originalLanguage[]"] = origLangs;
-      if (genre) {
-        const tagId = await getMdxTagId(genre);
-        if (tagId) params["includedTags[]"] = [tagId];
-      }
-      const data = await mdx<{ data: MdxManga[]; total: number }>("/manga", params);
-      const items = data.data.map((m) => normalizeMdxManga(m, extractCoverFileName(m)));
-      res.json({ items, page, hasMore: offset + items.length < data.total });
+      const result = await withCache(cacheKey, 10 * 60_000, async () => {
+        const params: Record<string, string | string[] | number | boolean | undefined> = {
+          limit: 20, offset, "order[followedCount]": "desc", "includes[]": ["cover_art"],
+          "contentRating[]": ["safe", "suggestive"], "availableTranslatedLanguage[]": ["en"],
+        };
+        if (status && ["ongoing", "completed", "hiatus", "cancelled"].includes(status)) params["status[]"] = [status];
+        const origLangs = typeToOriginalLanguage(type);
+        if (origLangs?.length) params["originalLanguage[]"] = origLangs;
+        if (genre) {
+          const tagId = await getMdxTagId(genre);
+          if (tagId) params["includedTags[]"] = [tagId];
+        }
+        const data = await mdx<{ data: MdxManga[]; total: number }>("/manga", params);
+        const items = data.data.map((m) => normalizeMdxManga(m, extractCoverFileName(m)));
+        return { items, page, hasMore: offset + items.length < data.total };
+      });
+      res.setHeader("Cache-Control", "public, max-age=300");
+      res.json(result);
     } catch (err) {
       req.log.error({ err }, "MangaDex popular failed");
       res.json({ items: [], page, hasMore: false });
@@ -480,24 +499,47 @@ router.get("/manga/popular", async (req, res): Promise<void> => {
   }
 
   try {
-    const data = await comickPost<FrontpageResponse>("/api/frontpage", {
-      source: provider, section: "trending", page, limit: 24, days: 30,
+    const result = await withCache(cacheKey, 10 * 60_000, async () => {
+      const data = await comickPost<FrontpageResponse>("/api/frontpage", {
+        source: provider, section: "trending", page, limit: 24, days: 30,
+      });
+      const raw = data.section?.items ?? [];
+      const items = raw.map((item) => normalizeComickItem(item, provider)).filter((item) => {
+        if (status && item.status && item.status.toLowerCase() !== status.toLowerCase()) return false;
+        if (type && item.type && item.type.toLowerCase() !== type.toLowerCase()) return false;
+        if (genre && item.genres?.length) {
+          const g = genre.toLowerCase();
+          if (!item.genres.some((ig) => ig.toLowerCase() === g)) return false;
+        }
+        return true;
+      });
+      return { items, page, hasMore: raw.length >= 24 };
     });
-    const raw = data.section?.items ?? [];
-    const items = raw.map((item) => normalizeComickItem(item, provider)).filter((item) => {
-      if (status && item.status && item.status.toLowerCase() !== status.toLowerCase()) return false;
-      if (type && item.type && item.type.toLowerCase() !== type.toLowerCase()) return false;
-      // genre post-filtering: comick frontpage items include genres only if returned by scraper
-      if (genre && item.genres?.length) {
-        const g = genre.toLowerCase();
-        if (!item.genres.some((ig) => ig.toLowerCase() === g)) return false;
-      }
-      return true;
-    });
-    res.json({ items, page, hasMore: raw.length >= 24 });
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.json(result);
   } catch (err) {
     req.log.error({ err }, "Comick popular failed");
     res.json({ items: [], page, hasMore: false });
+  }
+});
+
+// GET /manga/suggestions — fast typeahead (MangaDex only, limit 6, cached 2min)
+router.get("/manga/suggestions", async (req, res): Promise<void> => {
+  const q = String(req.query.q ?? "").trim();
+  if (!q) { res.json({ items: [] }); return; }
+  const cacheKey = `manga:suggest:${q.toLowerCase()}`;
+  try {
+    const result = await withCache(cacheKey, 2 * 60_000, async () => {
+      const data = await mdx<{ data: MdxManga[] }>("/manga", {
+        title: q, limit: 6, "includes[]": ["cover_art"], "contentRating[]": ["safe", "suggestive"],
+      });
+      const items = data.data.map((m) => normalizeMdxManga(m, extractCoverFileName(m)));
+      return { items };
+    });
+    res.setHeader("Cache-Control", "public, max-age=60");
+    res.json(result);
+  } catch {
+    res.json({ items: [] });
   }
 });
 
@@ -509,14 +551,19 @@ router.get("/manga/search", async (req, res): Promise<void> => {
   const offset = (page - 1) * 20;
 
   if (!q) { res.json({ items: [], page: 1, hasMore: false }); return; }
+  const cacheKey = `manga:search:${provider}:${q.toLowerCase()}:${page}`;
 
   if (provider === "mangadex") {
     try {
-      const data = await mdx<{ data: MdxManga[]; total: number }>("/manga", {
-        title: q, limit: 20, offset, "includes[]": ["cover_art"], "contentRating[]": ["safe", "suggestive"],
+      const result = await withCache(cacheKey, 2 * 60_000, async () => {
+        const data = await mdx<{ data: MdxManga[]; total: number }>("/manga", {
+          title: q, limit: 20, offset, "includes[]": ["cover_art"], "contentRating[]": ["safe", "suggestive"],
+        });
+        const items = data.data.map((m) => normalizeMdxManga(m, extractCoverFileName(m)));
+        return { items, page, hasMore: offset + items.length < data.total };
       });
-      const items = data.data.map((m) => normalizeMdxManga(m, extractCoverFileName(m)));
-      res.json({ items, page, hasMore: offset + items.length < data.total });
+      res.setHeader("Cache-Control", "public, max-age=60");
+      res.json(result);
     } catch (err) {
       req.log.error({ err }, "MangaDex search failed");
       res.json({ items: [], page: 1, hasMore: false });
@@ -576,6 +623,7 @@ router.get("/manga/search", async (req, res): Promise<void> => {
       if (!seen.has(key)) { seen.add(key); deduped.push(item); }
     }
 
+    res.setHeader("Cache-Control", "public, max-age=60");
     res.json({ items: deduped, page: 1, hasMore: false });
   } catch (err) {
     req.log.error({ err }, "Search failed");
@@ -924,30 +972,49 @@ router.get("/proxy-image", async (req, res): Promise<void> => {
     return;
   }
 
+  // Check in-memory image cache first
+  const cacheKey = rawUrl;
+  const cached = _imgCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < IMG_CACHE_TTL) {
+    res.setHeader("Content-Type", cached.ct);
+    res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("X-Cache", "HIT");
+    res.status(200).send(cached.buf);
+    return;
+  }
+
   try {
+    const referer = rawUrl.includes("flamecomics") ? "https://flamecomics.xyz/" :
+                    rawUrl.includes("asura") ? "https://asuracomic.net/" :
+                    rawUrl.includes("weebcentral") ? "https://weebcentral.com/" :
+                    "https://mangadex.org/";
     const upstream = await fetch(rawUrl, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; ShiroScans/2.0) AppleWebKit/537.36",
-        "Referer": "https://mangadex.org/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Referer": referer,
         "Accept": "image/webp,image/avif,image/*,*/*;q=0.8",
       },
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(10000),
     });
     if (!upstream.ok) {
       res.status(upstream.status).end();
       return;
     }
     const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
-    // Only serve image content types
     if (!contentType.startsWith("image/")) {
       res.status(400).end();
       return;
     }
-    const buffer = await upstream.arrayBuffer();
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    // Store in memory cache
+    _imgCache.set(cacheKey, { buf: buffer, ct: contentType, ts: Date.now() });
+    pruneImgCache();
     res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "public, max-age=604800, immutable");
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.status(200).send(Buffer.from(buffer));
+    res.setHeader("X-Cache", "MISS");
+    res.status(200).send(buffer);
   } catch (err) {
     req.log.error({ err }, "Image proxy failed");
     res.status(502).end();

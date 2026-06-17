@@ -149,9 +149,6 @@ export default function FlameSeriesDetailPage() {
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-start gap-2 mb-1">
-              <span className="text-[9px] font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30 px-1.5 py-0.5 rounded-full shrink-0 mt-0.5">FlameComics</span>
-            </div>
             <h1 className="text-lg font-black text-white leading-tight mb-1">{series.title}</h1>
             {series.author && (
               <p className="text-xs text-white/40 flex items-center gap-1 mb-1"><User className="w-3 h-3" />{series.author}</p>

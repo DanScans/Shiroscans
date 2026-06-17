@@ -1,2 +1,1 @@
-- [FlameComics scraper](flamecomics-scraper.md) — buildId extracted from __NEXT_DATA__ on homepage, cached 15min; retry with fresh ID on 404
-- [Proxy allowlist pattern](proxy-allowlist.md) — cdn.flamecomics.xyz needs separate entry from flamecomics.xyz in PROXY_ALLOWED_HOSTS Set in manga.ts
+- [Comick local timeout](comick-timeout.md) — localhost:3001 never runs; local timeout must stay ≤1.5s or every API call stalls 25s before fallback

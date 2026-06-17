@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Search, BookmarkCheck, Clock, Heart, User, Settings, LogOut, ChevronDown, Menu, X, Compass, Flame, BarChart2 } from "lucide-react";
+import { Search, BookmarkCheck, Clock, Heart, User, Settings, LogOut, ChevronDown, Menu, X, Compass, Flame, BarChart2, Loader2, BookOpen } from "lucide-react";
 import { useGetMe, useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import logoPath from "@assets/file_0000000028ec71f5bea7a576cf17a0af_1781485787252.png";
@@ -14,10 +14,30 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function proxyImage(url: string): string {
+  if (!url) return "";
+  if (!url.startsWith("http://") && !url.startsWith("https://")) return url;
+  return `${BASE}/api/proxy-image?url=${encodeURIComponent(url)}`;
+}
+
+interface SuggestionItem {
+  id: string;
+  title: string;
+  coverImage: string;
+  provider: string;
+  type?: string | null;
+}
+
 export default function Navbar() {
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const suggestDebounce = useRef<ReturnType<typeof setTimeout>>();
   const queryClient = useQueryClient();
 
   const { data: user } = useGetMe({ query: { queryKey: getGetMeQueryKey(), retry: false, throwOnError: false } });
@@ -34,10 +54,54 @@ export default function Navbar() {
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     if (searchQuery.trim()) {
+      setShowSuggestions(false);
       setLocation(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
       setSearchQuery("");
       setMobileOpen(false);
     }
+  }
+
+  function handleSearchInput(val: string) {
+    setSearchQuery(val);
+    clearTimeout(suggestDebounce.current);
+
+    if (!val.trim()) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setSuggestLoading(false);
+      return;
+    }
+
+    setShowSuggestions(true);
+    setSuggestLoading(true);
+
+    suggestDebounce.current = setTimeout(() => {
+      Promise.all([
+        fetch(`${BASE}/api/manga/suggestions?q=${encodeURIComponent(val.trim())}`).then((r) => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
+        fetch(`${BASE}/api/flamecomics/search?q=${encodeURIComponent(val.trim())}`).then((r) => r.ok ? r.json() : { results: [] }).catch(() => ({ results: [] })),
+      ]).then(([mdxData, flameData]) => {
+        const mdx = (mdxData.items ?? []).slice(0, 4) as SuggestionItem[];
+        const flame = ((flameData.results ?? []) as Array<{ id: string; title: string; coverUrl: string; genres: string[] }>)
+          .slice(0, 4)
+          .map((item) => ({ id: item.id, title: item.title, coverImage: item.coverUrl, provider: "flamecomics", type: "Manhwa" }));
+        const seen = new Set<string>();
+        const merged: SuggestionItem[] = [];
+        for (const item of [...flame, ...mdx]) {
+          const key = item.title.toLowerCase().replace(/\s+/g, "");
+          if (!seen.has(key)) { seen.add(key); merged.push(item); }
+        }
+        setSuggestions(merged.slice(0, 7));
+      }).finally(() => setSuggestLoading(false));
+    }, 220);
+  }
+
+  function goToSuggestion(item: SuggestionItem) {
+    setShowSuggestions(false);
+    setSearchQuery("");
+    const href = item.provider === "flamecomics"
+      ? `/flame/series/${encodeURIComponent(item.id)}`
+      : `/series/${item.provider}/${encodeURIComponent(item.id)}`;
+    setLocation(href);
   }
 
   const navLinks = [
@@ -81,18 +145,68 @@ export default function Navbar() {
           </div>
 
           <div className="flex items-center gap-2">
-            <form onSubmit={handleSearch} className="hidden md:flex items-center" data-testid="form-search">
+            {/* Desktop search with suggestions */}
+            <form onSubmit={handleSearch} className="hidden md:flex items-center relative" data-testid="form-search">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
                 <input
-                  type="search"
+                  type="text"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => handleSearchInput(e.target.value)}
+                  onFocus={() => searchQuery && setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                   placeholder="Search..."
-                  className="bg-white/5 border border-white/[0.08] rounded-lg pl-8 pr-3 py-1.5 text-sm text-white placeholder-[#9CA3AF] focus:outline-none focus:border-primary/40 focus:bg-white/8 w-40 transition-all focus:w-56"
+                  autoComplete="off"
+                  className="bg-white/5 border border-white/[0.08] rounded-lg pl-8 pr-3 py-1.5 text-sm text-white placeholder-[#9CA3AF] focus:outline-none focus:border-primary/40 focus:bg-white/8 w-40 transition-all focus:w-64"
                   data-testid="input-search"
                 />
               </div>
+
+              {/* Suggestions dropdown */}
+              {showSuggestions && (searchQuery.trim()) && (
+                <div className="absolute top-full right-0 mt-1.5 w-72 bg-[#13131f] border border-white/[0.08] rounded-xl shadow-2xl z-50 overflow-hidden">
+                  {suggestLoading && suggestions.length === 0 ? (
+                    <div className="flex items-center gap-2 px-4 py-3 text-white/40 text-xs">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Searching...
+                    </div>
+                  ) : suggestions.length > 0 ? (
+                    <>
+                      {suggestions.map((item) => (
+                        <button
+                          key={`${item.provider}-${item.id}`}
+                          type="button"
+                          onMouseDown={(e) => { e.preventDefault(); goToSuggestion(item); }}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-white/[0.06] transition-colors border-b border-white/[0.04] last:border-0 text-left"
+                        >
+                          <div className="w-7 h-9 rounded overflow-hidden shrink-0 bg-[#1a1a2e]">
+                            {item.coverImage ? (
+                              <img src={proxyImage(item.coverImage)} alt="" className="w-full h-full object-cover" loading="lazy" />
+                            ) : null}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-white/90 font-semibold line-clamp-1">{item.title}</p>
+                            <p className="text-[10px] text-white/30 mt-0.5">{item.type ?? "—"}</p>
+                          </div>
+                          {item.provider === "flamecomics" ? (
+                            <Flame className="w-3 h-3 text-orange-400/60 shrink-0" />
+                          ) : (
+                            <BookOpen className="w-3 h-3 text-primary/40 shrink-0" />
+                          )}
+                        </button>
+                      ))}
+                      <button
+                        type="submit"
+                        onMouseDown={(e) => e.preventDefault()}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-primary/80 hover:bg-white/[0.04] font-semibold"
+                      >
+                        <Search className="w-3 h-3" /> All results for "{searchQuery}"
+                      </button>
+                    </>
+                  ) : (
+                    <div className="px-3 py-3 text-xs text-white/30">No results</div>
+                  )}
+                </div>
+              )}
             </form>
 
             {user ? (
@@ -175,10 +289,11 @@ export default function Navbar() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9CA3AF]" />
                 <input
-                  type="search"
+                  type="text"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search manga..."
+                  onChange={(e) => handleSearchInput(e.target.value)}
+                  placeholder="Search manga & manhwa..."
+                  autoComplete="off"
                   className="w-full bg-white/5 border border-white/[0.08] rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder-[#9CA3AF] focus:outline-none focus:border-primary/40"
                   data-testid="input-search-mobile"
                 />
