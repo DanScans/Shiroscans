@@ -399,6 +399,7 @@ router.get("/manga/latest", async (req, res): Promise<void> => {
   const provider = req.query.provider ? String(req.query.provider) : "mangadex";
   const type = req.query.type ? String(req.query.type) : undefined;
   const status = req.query.status ? String(req.query.status).toLowerCase() : undefined;
+  const genre = req.query.genre ? String(req.query.genre) : undefined;
   const offset = (page - 1) * 20;
 
   if (provider === "mangadex") {
@@ -410,6 +411,10 @@ router.get("/manga/latest", async (req, res): Promise<void> => {
       if (status && ["ongoing", "completed", "hiatus", "cancelled"].includes(status)) params["status[]"] = [status];
       const origLangs = typeToOriginalLanguage(type);
       if (origLangs?.length) params["originalLanguage[]"] = origLangs;
+      if (genre) {
+        const tagId = await getMdxTagId(genre);
+        if (tagId) params["includedTags[]"] = [tagId];
+      }
       const data = await mdx<{ data: MdxManga[]; total: number }>("/manga", params);
       const items = data.data.map((m) => normalizeMdxManga(m, extractCoverFileName(m)));
       res.json({ items, page, hasMore: offset + items.length < data.total });
@@ -428,6 +433,11 @@ router.get("/manga/latest", async (req, res): Promise<void> => {
     const items = raw.map((item) => normalizeComickItem(item, provider)).filter((item) => {
       if (status && item.status && item.status.toLowerCase() !== status.toLowerCase()) return false;
       if (type && item.type && item.type.toLowerCase() !== type.toLowerCase()) return false;
+      // genre post-filtering: comick frontpage items include genres only if returned by scraper
+      if (genre && item.genres?.length) {
+        const g = genre.toLowerCase();
+        if (!item.genres.some((ig) => ig.toLowerCase() === g)) return false;
+      }
       return true;
     });
     res.json({ items, page, hasMore: raw.length >= 24 });
@@ -443,6 +453,7 @@ router.get("/manga/popular", async (req, res): Promise<void> => {
   const provider = req.query.provider ? String(req.query.provider) : "mangadex";
   const status = req.query.status ? String(req.query.status).toLowerCase() : undefined;
   const type = req.query.type ? String(req.query.type) : undefined;
+  const genre = req.query.genre ? String(req.query.genre) : undefined;
   const offset = (page - 1) * 20;
 
   if (provider === "mangadex") {
@@ -454,6 +465,10 @@ router.get("/manga/popular", async (req, res): Promise<void> => {
       if (status && ["ongoing", "completed", "hiatus", "cancelled"].includes(status)) params["status[]"] = [status];
       const origLangs = typeToOriginalLanguage(type);
       if (origLangs?.length) params["originalLanguage[]"] = origLangs;
+      if (genre) {
+        const tagId = await getMdxTagId(genre);
+        if (tagId) params["includedTags[]"] = [tagId];
+      }
       const data = await mdx<{ data: MdxManga[]; total: number }>("/manga", params);
       const items = data.data.map((m) => normalizeMdxManga(m, extractCoverFileName(m)));
       res.json({ items, page, hasMore: offset + items.length < data.total });
@@ -472,6 +487,11 @@ router.get("/manga/popular", async (req, res): Promise<void> => {
     const items = raw.map((item) => normalizeComickItem(item, provider)).filter((item) => {
       if (status && item.status && item.status.toLowerCase() !== status.toLowerCase()) return false;
       if (type && item.type && item.type.toLowerCase() !== type.toLowerCase()) return false;
+      // genre post-filtering: comick frontpage items include genres only if returned by scraper
+      if (genre && item.genres?.length) {
+        const g = genre.toLowerCase();
+        if (!item.genres.some((ig) => ig.toLowerCase() === g)) return false;
+      }
       return true;
     });
     res.json({ items, page, hasMore: raw.length >= 24 });
@@ -770,6 +790,25 @@ router.get("/manga/random", async (req, res): Promise<void> => {
     res.status(500).json({ error: "Failed to fetch random manga" });
   }
 });
+
+// ─── Tag cache (avoids redundant MangaDex tag fetches) ───────────────────────
+
+let _tagCache: Array<{ id: string; name: string }> | null = null;
+
+async function getMdxTagId(genreName: string): Promise<string | undefined> {
+  if (!_tagCache) {
+    try {
+      const data = await mdx<{ data: Array<{ id: string; attributes: { name: Record<string, string>; group: string } }> }>("/manga/tag");
+      _tagCache = data.data
+        .filter((t) => t.attributes.group === "genre")
+        .map((t) => ({ id: t.id, name: t.attributes.name["en"] ?? Object.values(t.attributes.name)[0] }));
+    } catch {
+      _tagCache = [];
+    }
+  }
+  const lower = genreName.toLowerCase();
+  return _tagCache.find((t) => t.name.toLowerCase() === lower)?.id;
+}
 
 // GET /manga/tags
 router.get("/manga/tags", async (_req, res): Promise<void> => {
