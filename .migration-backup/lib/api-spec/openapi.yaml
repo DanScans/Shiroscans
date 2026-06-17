@@ -1,0 +1,1256 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: ShiroScans API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: manga
+    description: Manga listing and search
+  - name: auth
+    description: Authentication
+  - name: bookmarks
+    description: User bookmarks
+  - name: history
+    description: Reading history
+  - name: reactions
+    description: Chapter reactions
+  - name: favourites
+    description: User favourites
+  - name: profile
+    description: User profile and settings
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /manga/home:
+    get:
+      operationId: getHomeFeed
+      tags: [manga]
+      summary: Get home page feed
+      description: Returns featured, latest, and popular manga for the home page
+      responses:
+        "200":
+          description: Home feed data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HomeFeed"
+
+  /manga/latest:
+    get:
+      operationId: getLatestManga
+      tags: [manga]
+      summary: Get latest manga updates
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+          required: false
+        - in: query
+          name: provider
+          schema:
+            type: string
+          required: false
+        - in: query
+          name: type
+          schema:
+            type: string
+          required: false
+        - in: query
+          name: status
+          schema:
+            type: string
+          required: false
+        - in: query
+          name: genre
+          schema:
+            type: string
+          required: false
+      responses:
+        "200":
+          description: Latest manga list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MangaPage"
+
+  /manga/popular:
+    get:
+      operationId: getPopularManga
+      tags: [manga]
+      summary: Get popular manga
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+          required: false
+        - in: query
+          name: provider
+          schema:
+            type: string
+          required: false
+        - in: query
+          name: type
+          schema:
+            type: string
+          required: false
+        - in: query
+          name: status
+          schema:
+            type: string
+          required: false
+        - in: query
+          name: genre
+          schema:
+            type: string
+          required: false
+      responses:
+        "200":
+          description: Popular manga list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MangaPage"
+
+  /manga/search:
+    get:
+      operationId: searchManga
+      tags: [manga]
+      summary: Search manga
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+          required: true
+        - in: query
+          name: page
+          schema:
+            type: integer
+          required: false
+        - in: query
+          name: provider
+          schema:
+            type: string
+          required: false
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MangaPage"
+
+  /manga/series/{provider}/{id}:
+    get:
+      operationId: getMangaSeries
+      tags: [manga]
+      summary: Get manga series details
+      parameters:
+        - in: path
+          name: provider
+          schema:
+            type: string
+          required: true
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+      responses:
+        "200":
+          description: Manga series details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MangaSeries"
+
+  /manga/chapters/{provider}/{seriesId}/{chapterId}:
+    get:
+      operationId: getChapterPages
+      tags: [manga]
+      summary: Get chapter page images
+      parameters:
+        - in: path
+          name: provider
+          schema:
+            type: string
+          required: true
+        - in: path
+          name: seriesId
+          schema:
+            type: string
+          required: true
+        - in: path
+          name: chapterId
+          schema:
+            type: string
+          required: true
+      responses:
+        "200":
+          description: Chapter pages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChapterPages"
+
+  /manga/random:
+    get:
+      operationId: getRandomManga
+      tags: [manga]
+      summary: Get a random manga
+      parameters:
+        - in: query
+          name: provider
+          schema:
+            type: string
+          required: false
+      responses:
+        "200":
+          description: Random manga
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MangaItem"
+
+  /manga/tags:
+    get:
+      operationId: getMangaTags
+      tags: [manga]
+      summary: Get all available genre tags
+      responses:
+        "200":
+          description: Tag list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tag"
+
+  /manga/sources:
+    get:
+      operationId: getMangaSources
+      tags: [manga]
+      summary: Get all available manga sources
+      responses:
+        "200":
+          description: Source list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MangaSource"
+
+  /manga/frontpage:
+    post:
+      operationId: getMangaFrontpage
+      tags: [manga]
+      summary: Get frontpage section from a source
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FrontpageInput"
+      responses:
+        "200":
+          description: Frontpage section items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FrontpagePage"
+
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterInput"
+      responses:
+        "201":
+          description: Registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Log in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Log out
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /bookmarks:
+    get:
+      operationId: getBookmarks
+      tags: [bookmarks]
+      summary: Get user bookmarks
+      responses:
+        "200":
+          description: Bookmarks list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BookmarkItem"
+    post:
+      operationId: addBookmark
+      tags: [bookmarks]
+      summary: Add bookmark
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookmarkInput"
+      responses:
+        "201":
+          description: Bookmark added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookmarkItem"
+
+  /bookmarks/{provider}/{seriesId}:
+    delete:
+      operationId: removeBookmark
+      tags: [bookmarks]
+      summary: Remove bookmark
+      parameters:
+        - in: path
+          name: provider
+          schema:
+            type: string
+          required: true
+        - in: path
+          name: seriesId
+          schema:
+            type: string
+          required: true
+      responses:
+        "200":
+          description: Removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /history:
+    get:
+      operationId: getHistory
+      tags: [history]
+      summary: Get reading history
+      responses:
+        "200":
+          description: Reading history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoryItem"
+    post:
+      operationId: addHistory
+      tags: [history]
+      summary: Add or update reading history
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HistoryInput"
+      responses:
+        "201":
+          description: History saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoryItem"
+
+  /history/all:
+    delete:
+      operationId: clearHistory
+      tags: [history]
+      summary: Clear all reading history
+      responses:
+        "200":
+          description: Cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /history/{provider}/{seriesId}:
+    delete:
+      operationId: deleteHistoryEntry
+      tags: [history]
+      summary: Delete single history entry
+      parameters:
+        - in: path
+          name: provider
+          schema:
+            type: string
+          required: true
+        - in: path
+          name: seriesId
+          schema:
+            type: string
+          required: true
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /reactions/{provider}/{seriesId}/{chapterId}:
+    get:
+      operationId: getReactions
+      tags: [reactions]
+      summary: Get chapter reactions
+      parameters:
+        - in: path
+          name: provider
+          schema:
+            type: string
+          required: true
+        - in: path
+          name: seriesId
+          schema:
+            type: string
+          required: true
+        - in: path
+          name: chapterId
+          schema:
+            type: string
+          required: true
+      responses:
+        "200":
+          description: Reactions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReactionSummary"
+    post:
+      operationId: addReaction
+      tags: [reactions]
+      summary: Add or update reaction
+      parameters:
+        - in: path
+          name: provider
+          schema:
+            type: string
+          required: true
+        - in: path
+          name: seriesId
+          schema:
+            type: string
+          required: true
+        - in: path
+          name: chapterId
+          schema:
+            type: string
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReactionInput"
+      responses:
+        "200":
+          description: Reaction saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReactionSummary"
+
+  /favourites:
+    get:
+      operationId: getFavourites
+      tags: [favourites]
+      summary: Get user favourites
+      responses:
+        "200":
+          description: Favourites list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FavouriteItem"
+    post:
+      operationId: addFavourite
+      tags: [favourites]
+      summary: Add favourite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FavouriteInput"
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FavouriteItem"
+
+  /favourites/{provider}/{seriesId}:
+    delete:
+      operationId: removeFavourite
+      tags: [favourites]
+      summary: Remove favourite
+      parameters:
+        - in: path
+          name: provider
+          schema:
+            type: string
+          required: true
+        - in: path
+          name: seriesId
+          schema:
+            type: string
+          required: true
+      responses:
+        "200":
+          description: Removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /profile:
+    get:
+      operationId: getProfile
+      tags: [profile]
+      summary: Get user profile and stats
+      responses:
+        "200":
+          description: Profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+    patch:
+      operationId: updateProfile
+      tags: [profile]
+      summary: Update profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileUpdate"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+
+  /profile/password:
+    patch:
+      operationId: changePassword
+      tags: [profile]
+      summary: Change password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordChange"
+      responses:
+        "200":
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: Invalid password
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /profile/account:
+    delete:
+      operationId: deleteAccount
+      tags: [profile]
+      summary: Delete account
+      responses:
+        "200":
+          description: Account deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+    MangaItem:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        coverImage:
+          type: string
+        provider:
+          type: string
+        type:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+        rating:
+          type: ["number", "null"]
+        latestChapter:
+          type: ["string", "null"]
+        genres:
+          type: array
+          items:
+            type: string
+        isNew:
+          type: boolean
+        updatedAt:
+          type: ["string", "null"]
+      required:
+        - id
+        - title
+        - coverImage
+        - provider
+        - isNew
+        - genres
+
+    MangaPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MangaItem"
+        page:
+          type: integer
+        hasMore:
+          type: boolean
+      required:
+        - items
+        - page
+        - hasMore
+
+    Chapter:
+      type: object
+      properties:
+        id:
+          type: string
+        number:
+          type: string
+        title:
+          type: ["string", "null"]
+        releasedAt:
+          type: ["string", "null"]
+        views:
+          type: ["integer", "null"]
+      required:
+        - id
+        - number
+
+    MangaSeries:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        coverImage:
+          type: string
+        bannerImage:
+          type: ["string", "null"]
+        provider:
+          type: string
+        type:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+        rating:
+          type: ["number", "null"]
+        description:
+          type: ["string", "null"]
+        genres:
+          type: array
+          items:
+            type: string
+        author:
+          type: ["string", "null"]
+        artist:
+          type: ["string", "null"]
+        chapters:
+          type: array
+          items:
+            $ref: "#/components/schemas/Chapter"
+        totalChapters:
+          type: integer
+        alternativeTitles:
+          type: array
+          items:
+            type: string
+        serialization:
+          type: ["string", "null"]
+        updatedAt:
+          type: ["string", "null"]
+      required:
+        - id
+        - title
+        - coverImage
+        - provider
+        - genres
+        - chapters
+        - totalChapters
+        - alternativeTitles
+
+    ChapterPages:
+      type: object
+      properties:
+        seriesId:
+          type: string
+        chapterId:
+          type: string
+        provider:
+          type: string
+        pages:
+          type: array
+          items:
+            type: string
+        currentChapter:
+          type: string
+        prevChapterId:
+          type: ["string", "null"]
+        nextChapterId:
+          type: ["string", "null"]
+        seriesTitle:
+          type: string
+        chapterTitle:
+          type: ["string", "null"]
+      required:
+        - seriesId
+        - chapterId
+        - provider
+        - pages
+        - currentChapter
+        - seriesTitle
+
+    HomeFeed:
+      type: object
+      properties:
+        featured:
+          type: array
+          items:
+            $ref: "#/components/schemas/MangaItem"
+        latestUpdates:
+          type: array
+          items:
+            $ref: "#/components/schemas/MangaItem"
+        popularNow:
+          type: array
+          items:
+            $ref: "#/components/schemas/MangaItem"
+        newSeries:
+          type: array
+          items:
+            $ref: "#/components/schemas/MangaItem"
+      required:
+        - featured
+        - latestUpdates
+        - popularNow
+        - newSeries
+
+    Tag:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        count:
+          type: ["integer", "null"]
+      required:
+        - id
+        - name
+
+    MangaSource:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+        type:
+          type: ["string", "null"]
+      required:
+        - id
+        - name
+        - status
+
+    FrontpageInput:
+      type: object
+      properties:
+        source:
+          type: string
+        section:
+          type: string
+        page:
+          type: integer
+        limit:
+          type: integer
+        days:
+          type: ["integer", "null"]
+      required:
+        - source
+        - section
+
+    FrontpagePage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MangaItem"
+        source:
+          type: string
+        section:
+          type: string
+        page:
+          type: integer
+      required:
+        - items
+        - source
+        - section
+        - page
+
+    AuthUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        role:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - username
+        - email
+        - role
+        - createdAt
+
+    RegisterInput:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+      required:
+        - username
+        - email
+        - password
+
+    LoginInput:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    BookmarkItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        provider:
+          type: string
+        seriesId:
+          type: string
+        title:
+          type: string
+        coverImage:
+          type: string
+        type:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+        latestChapter:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - userId
+        - provider
+        - seriesId
+        - title
+        - coverImage
+        - createdAt
+
+    BookmarkInput:
+      type: object
+      properties:
+        provider:
+          type: string
+        seriesId:
+          type: string
+        title:
+          type: string
+        coverImage:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+        latestChapter:
+          type: string
+      required:
+        - provider
+        - seriesId
+        - title
+        - coverImage
+
+    HistoryItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        provider:
+          type: string
+        seriesId:
+          type: string
+        chapterId:
+          type: string
+        title:
+          type: string
+        coverImage:
+          type: string
+        chapterNumber:
+          type: string
+        readAt:
+          type: string
+      required:
+        - id
+        - userId
+        - provider
+        - seriesId
+        - chapterId
+        - title
+        - coverImage
+        - chapterNumber
+        - readAt
+
+    HistoryInput:
+      type: object
+      properties:
+        provider:
+          type: string
+        seriesId:
+          type: string
+        chapterId:
+          type: string
+        title:
+          type: string
+        coverImage:
+          type: string
+        chapterNumber:
+          type: string
+      required:
+        - provider
+        - seriesId
+        - chapterId
+        - title
+        - coverImage
+        - chapterNumber
+
+    ReactionSummary:
+      type: object
+      properties:
+        love:
+          type: integer
+        fire:
+          type: integer
+        wow:
+          type: integer
+        sad:
+          type: integer
+        angry:
+          type: integer
+        userReaction:
+          type: ["string", "null"]
+      required:
+        - love
+        - fire
+        - wow
+        - sad
+        - angry
+
+    ReactionInput:
+      type: object
+      properties:
+        reaction:
+          type: string
+          enum: [love, fire, wow, sad, angry]
+      required:
+        - reaction
+
+    FavouriteItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        provider:
+          type: string
+        seriesId:
+          type: string
+        title:
+          type: string
+        coverImage:
+          type: string
+        type:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - userId
+        - provider
+        - seriesId
+        - title
+        - coverImage
+        - createdAt
+
+    FavouriteInput:
+      type: object
+      properties:
+        provider:
+          type: string
+        seriesId:
+          type: string
+        title:
+          type: string
+        coverImage:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+      required:
+        - provider
+        - seriesId
+        - title
+        - coverImage
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        bio:
+          type: ["string", "null"]
+        role:
+          type: string
+        createdAt:
+          type: string
+        stats:
+          $ref: "#/components/schemas/UserStats"
+      required:
+        - id
+        - username
+        - email
+        - role
+        - createdAt
+        - stats
+
+    UserStats:
+      type: object
+      properties:
+        bookmarksCount:
+          type: integer
+        favouritesCount:
+          type: integer
+        chaptersRead:
+          type: integer
+      required:
+        - bookmarksCount
+        - favouritesCount
+        - chaptersRead
+
+    ProfileUpdate:
+      type: object
+      properties:
+        username:
+          type: string
+        bio:
+          type: string
+        avatarUrl:
+          type: string
+
+    PasswordChange:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 8
+      required:
+        - currentPassword
+        - newPassword
