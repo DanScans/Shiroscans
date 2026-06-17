@@ -706,9 +706,12 @@ router.get("/manga/chapters/:provider/:seriesId/:chapterId", async (req, res): P
           const chapterData = await fetch(`https://comix.to/api/v2/chapter/${comixChapterId}/images`, {
             headers: { "User-Agent": "ShiroScans/2.0" },
             signal: AbortSignal.timeout(10000),
-          }).then((r) => (r.ok ? r.json() : null));
+          }).then((r) => (r.ok ? r.json() as Promise<{ result?: unknown[] }> : null));
           if (chapterData?.result && Array.isArray(chapterData.result)) {
-            pages = chapterData.result.map((img: { url?: string; url2?: string }) => img.url || img.url2 || "").filter(Boolean);
+            pages = chapterData.result.map((img) => {
+              const i = img as { url?: string; url2?: string };
+              return i.url || i.url2 || "";
+            }).filter(Boolean);
           }
         } catch {
           // fall through to chapters list approach
@@ -787,12 +790,61 @@ router.get("/manga/tags", async (_req, res): Promise<void> => {
   }
 });
 
-// Domains that browsers can load directly (CORS-friendly CDNs).
-// For these we issue a 302 redirect instead of proxying server-side,
-// because their bot-protection blocks datacenter IPs.
+// ─── Image proxy allowlist ────────────────────────────────────────────────────
+// Only hosts in this set may be requested through the proxy.
+// This prevents SSRF against internal services.
+//
+// Hosts in BROWSER_DIRECT_HOSTS get a 302 redirect (bot-protection blocks
+// datacenter IPs, but browsers can load these directly with CORS).
+// All others are proxied server-side (needed for Referer-restricted scrapers).
+
 const BROWSER_DIRECT_HOSTS = new Set([
   "uploads.mangadex.org",
   "cmdxd98sb0x3yprd.mangadex.network",
+]);
+
+const PROXY_ALLOWED_HOSTS = new Set([
+  // MangaDex
+  "uploads.mangadex.org",
+  "cmdxd98sb0x3yprd.mangadex.network",
+  // Comick / comix.to
+  "meo.comick.pictures",
+  "comick.pictures",
+  // AsuraScans
+  "gg.asuracomic.net",
+  "asuratoon.com",
+  "asuracomic.net",
+  // WeebCentral
+  "weebcentral.com",
+  "s1.weebcentral.com",
+  "s2.weebcentral.com",
+  // MangaGo
+  "imgv2-1-f.scribdassets.com",
+  "imgv2-2-f.scribdassets.com",
+  // MangaKatana
+  "mangakatana.com",
+  "i.mangakatana.com",
+  // FlameComics
+  "flamecomics.xyz",
+  "flamecomics.me",
+  // Thunderscans
+  "api.thunderscans.com",
+  "thunderscans.com",
+  // Vortex Scans
+  "vortexscans.org",
+  // Raven Scans
+  "ravenscans.com",
+  // MangaRead
+  "mangaread.org",
+  // Mgeko
+  "mgeko.cc",
+  // Novelcool
+  "novelcool.com",
+  // Various CDNs commonly used by scrapers
+  "i0.wp.com",
+  "i1.wp.com",
+  "i2.wp.com",
+  "i3.wp.com",
 ]);
 
 // GET /proxy-image?url=<encoded-url>  — server-side image proxy so covers always load regardless of CORS/referer restrictions
@@ -805,15 +857,30 @@ router.get("/proxy-image", async (req, res): Promise<void> => {
     return;
   }
 
-  // For browser-friendly CDNs, redirect — let the browser fetch directly
+  // Parse and validate the URL — reject anything not on the allowlist
+  let parsed: URL;
   try {
-    const parsed = new URL(rawUrl);
-    if (BROWSER_DIRECT_HOSTS.has(parsed.hostname)) {
-      res.redirect(302, rawUrl);
-      return;
-    }
+    parsed = new URL(rawUrl);
   } catch {
     res.status(400).end();
+    return;
+  }
+
+  // Only allow https (no http to avoid mixed-content / cleartext leaks)
+  if (parsed.protocol !== "https:") {
+    res.status(400).end();
+    return;
+  }
+
+  // Strict hostname allowlist — block any host not explicitly permitted
+  if (!PROXY_ALLOWED_HOSTS.has(parsed.hostname)) {
+    res.status(403).end();
+    return;
+  }
+
+  // For browser-friendly CDNs, redirect — let the browser fetch directly
+  if (BROWSER_DIRECT_HOSTS.has(parsed.hostname)) {
+    res.redirect(302, rawUrl);
     return;
   }
 
@@ -831,6 +898,11 @@ router.get("/proxy-image", async (req, res): Promise<void> => {
       return;
     }
     const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
+    // Only serve image content types
+    if (!contentType.startsWith("image/")) {
+      res.status(400).end();
+      return;
+    }
     const buffer = await upstream.arrayBuffer();
     res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "public, max-age=604800, immutable");
