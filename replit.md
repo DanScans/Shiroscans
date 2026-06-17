@@ -1,10 +1,11 @@
-# [Project name]
+# ShiroScans
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A manga/manhwa/manhua reader web app with multiple source aggregation, user accounts, bookmarks, history, favourites, and chapter reactions.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
+- `pnpm --filter @workspace/shiroscans run dev` — run the frontend (port assigned by workflow)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
@@ -14,7 +15,8 @@ _Replace the heading above with the project's name, and this line with one sente
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
+- Frontend: React + Vite + Tailwind CSS v4 + wouter (routing) + TanStack Query
+- API: Express 5 + session auth (bcrypt passwords)
 - DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
@@ -22,15 +24,30 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/shiroscans/` — React + Vite frontend
+- `artifacts/api-server/` — Express backend (auth, manga proxy, bookmarks, history, favourites, reactions, profile)
+- `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth)
+- `lib/api-client-react/` — Generated React Query hooks
+- `lib/api-zod/` — Generated Zod schemas (used server-side)
+- `lib/db/src/schema/` — Drizzle ORM schema (users, bookmarks, history, favourites, reactions)
+- `attached_assets/` — Logo and other image assets
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Manga content is fetched via a proxy through the Express API server — the frontend never calls external manga APIs directly, avoiding CORS issues.
+- Comick Source API (local-first at port 3001, remote fallback) and MangaDex API provide content.
+- Session-based auth with bcrypt password hashing.
+- Image proxy endpoint at `/api/proxy-image` handles CORS/referer-restricted cover images.
+- App starts in dark mode by default (`document.documentElement.classList.add("dark")`).
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Browse manga/manhwa/manhua from multiple sources (MangaDex, Comick, AsuraScans, WeebCentral, etc.)
+- Search across sources with streaming NDJSON results
+- Read chapters with prev/next navigation
+- User accounts: register, login, profile management
+- Bookmarks, reading history, favourites, per-chapter emoji reactions
+- Dark mode UI throughout
 
 ## User preferences
 
@@ -38,7 +55,9 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- `bcrypt` requires native build approval in pnpm-workspace.yaml `onlyBuiltDependencies`
+- Vite `fs.strict: true` requires the artifact root AND `attached_assets/` in `server.fs.allow`
+- The `mangadex-full-api` package is listed as a dependency but the server uses raw `fetch` against the MangaDex REST API directly
 
 ## Pointers
 
