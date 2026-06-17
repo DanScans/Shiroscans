@@ -208,6 +208,15 @@ function getMangaStatus(status: string | null | undefined): string {
   return map[status.toLowerCase()] ?? status;
 }
 
+function typeToOriginalLanguage(type: string | undefined): string[] | undefined {
+  if (!type) return undefined;
+  const t = type.toLowerCase();
+  if (t === "manhwa" || t === "webtoon") return ["ko"];
+  if (t === "manhua") return ["zh", "zh-hk"];
+  if (t === "manga") return ["ja"];
+  return undefined;
+}
+
 function normalizeMdxManga(m: MdxManga, coverFileName?: string) {
   const title = m.attributes.title["en"] ?? m.attributes.title["ja-ro"] ?? Object.values(m.attributes.title)[0] ?? "Unknown";
   const genres = (m.attributes.tags ?? [])
@@ -399,6 +408,8 @@ router.get("/manga/latest", async (req, res): Promise<void> => {
         "contentRating[]": ["safe", "suggestive"], "availableTranslatedLanguage[]": ["en"],
       };
       if (status && ["ongoing", "completed", "hiatus", "cancelled"].includes(status)) params["status[]"] = [status];
+      const origLangs = typeToOriginalLanguage(type);
+      if (origLangs?.length) params["originalLanguage[]"] = origLangs;
       const data = await mdx<{ data: MdxManga[]; total: number }>("/manga", params);
       const items = data.data.map((m) => normalizeMdxManga(m, extractCoverFileName(m)));
       res.json({ items, page, hasMore: offset + items.length < data.total });
@@ -441,6 +452,8 @@ router.get("/manga/popular", async (req, res): Promise<void> => {
         "contentRating[]": ["safe", "suggestive"], "availableTranslatedLanguage[]": ["en"],
       };
       if (status && ["ongoing", "completed", "hiatus", "cancelled"].includes(status)) params["status[]"] = [status];
+      const origLangs = typeToOriginalLanguage(type);
+      if (origLangs?.length) params["originalLanguage[]"] = origLangs;
       const data = await mdx<{ data: MdxManga[]; total: number }>("/manga", params);
       const items = data.data.map((m) => normalizeMdxManga(m, extractCoverFileName(m)));
       res.json({ items, page, hasMore: offset + items.length < data.total });

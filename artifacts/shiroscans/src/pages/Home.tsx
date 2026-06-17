@@ -1,10 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
-import { BookOpen, ChevronRight, Flame, Star, TrendingUp, Sparkles, Clock } from "lucide-react";
-import { useGetHomeFeed } from "@workspace/api-client-react";
-import MangaCard, { MangaCardSkeleton } from "@/components/MangaCard";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Star, ChevronRight } from "lucide-react";
+import { useGetHomeFeed, useGetPopularManga } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function proxyImage(url: string): string {
@@ -35,138 +32,136 @@ type FeedItem = {
   genres?: string[];
   isNew?: boolean;
   updatedAt?: string | null;
-  description?: string | null;
 };
 
-function FeaturedBanner({ items }: { items: FeedItem[] }) {
+function FeaturedCarousel({ items }: { items: FeedItem[] }) {
   const [current, setCurrent] = useState(0);
 
   useEffect(() => {
     if (items.length <= 1) return;
-    const timer = setInterval(() => setCurrent((c) => (c + 1) % items.length), 5500);
+    const timer = setInterval(() => setCurrent((c) => (c + 1) % items.length), 4500);
     return () => clearInterval(timer);
   }, [items.length]);
 
   if (!items.length) return null;
+  const len = items.length;
+  const active = items[current];
 
   return (
-    <div className="relative h-[420px] md:h-[500px] overflow-hidden rounded-xl mb-8 shadow-2xl" data-testid="featured-banner">
-      {items.map((item, i) => {
-        const offset = i - current;
-        const style: React.CSSProperties = {
-          transform: `translateX(${offset * 100}%)`,
-          transition: "transform 0.75s cubic-bezier(0.77, 0, 0.175, 1)",
-        };
-        return (
-          <div key={item.id} className="absolute inset-0" style={style}>
-            {item.coverImage && (
-              <img
-                src={proxyImage(item.coverImage)}
-                alt={item.title}
-                className="absolute inset-0 w-full h-full object-cover"
-                onError={(e) => { (e.target as HTMLImageElement).src = item.coverImage; }}
-              />
-            )}
-            <div className="absolute inset-0 bg-gradient-to-r from-[#07070d] via-[#07070d]/75 to-transparent" />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#07070d] via-transparent to-transparent" />
+    <div className="relative bg-[#07070d]" data-testid="featured-banner">
+      <div className="relative overflow-hidden" style={{ height: "340px" }}>
+        {items.slice(0, 7).map((item, i) => {
+          let offset = i - current;
+          if (offset > len / 2) offset -= len;
+          if (offset < -len / 2) offset += len;
+          if (Math.abs(offset) > 2) return null;
 
-            <div className="relative z-10 flex flex-col justify-end h-full p-6 md:p-10 max-w-2xl">
-              <div className="flex items-center gap-2 mb-3">
-                {item.type && (
-                  <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-primary/20 text-primary border border-primary/30">
-                    {item.type}
-                  </span>
-                )}
-                {item.status && (
-                  <span className="text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded bg-white/10 text-white/60 border border-white/10">
-                    {item.status}
-                  </span>
-                )}
-              </div>
-              <h1 className="text-3xl md:text-5xl font-black text-white mb-2 leading-tight line-clamp-2 drop-shadow-lg" data-testid="text-featured-title">
-                {item.title}
-              </h1>
-              {item.rating && (
-                <div className="flex items-center gap-1.5 mb-3">
-                  <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                  <span className="text-amber-400 font-semibold text-sm">{typeof item.rating === "number" ? item.rating.toFixed(1) : item.rating}</span>
+          const scale = offset === 0 ? 1 : Math.abs(offset) === 1 ? 0.82 : 0.68;
+          const opacity = offset === 0 ? 1 : Math.abs(offset) === 1 ? 0.72 : 0.35;
+          const zIndex = offset === 0 ? 30 : Math.abs(offset) === 1 ? 20 : 10;
+
+          return (
+            <div
+              key={`${item.id}-${i}`}
+              className="absolute top-0 bottom-0 flex items-center transition-all duration-500 ease-out"
+              style={{
+                left: "50%",
+                transform: `translateX(calc(-50% + ${offset * 62}vw)) scale(${scale})`,
+                zIndex,
+                opacity,
+                width: "min(55vw, 230px)",
+                filter: offset === 0 ? "none" : "brightness(0.5)",
+                cursor: offset !== 0 ? "pointer" : "default",
+              }}
+              onClick={() => offset !== 0 && setCurrent(i)}
+            >
+              <Link
+                href={offset === 0 ? `/series/${item.provider}/${encodeURIComponent(item.id)}` : "#"}
+                onClick={(e) => { if (offset !== 0) e.preventDefault(); }}
+                className="block w-full"
+              >
+                <div className="relative rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: "2/3" }}>
+                  {item.coverImage ? (
+                    <img
+                      src={proxyImage(item.coverImage)}
+                      alt={item.title}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      onError={(e) => { (e.target as HTMLImageElement).src = item.coverImage; }}
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-[#1a1a2e]" />
+                  )}
+                  {offset === 0 && item.rating != null && (
+                    <div className="absolute top-2 left-2 flex items-center gap-1 bg-black/75 backdrop-blur-sm rounded-md px-1.5 py-0.5">
+                      <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                      <span className="text-amber-400 text-xs font-bold">
+                        {typeof item.rating === "number" ? item.rating.toFixed(1) : item.rating}
+                      </span>
+                    </div>
+                  )}
+                  {offset === 0 && item.type && (
+                    <div className="absolute top-2 right-2 text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-primary text-white">
+                      {item.type}
+                    </div>
+                  )}
                 </div>
-              )}
-              {item.genres && item.genres.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-5">
-                  {item.genres.slice(0, 4).map((g) => (
-                    <span key={g} className="text-xs text-white/60 bg-white/8 rounded-full px-2.5 py-0.5 border border-white/10">{g}</span>
-                  ))}
-                </div>
-              )}
-              <Button asChild className="bg-primary hover:bg-primary/90 w-fit gap-2 rounded-lg px-5 py-2.5 shadow-lg shadow-primary/20 font-semibold text-sm">
-                <Link href={`/series/${item.provider}/${encodeURIComponent(item.id)}`} data-testid="link-featured-read">
-                  <BookOpen className="w-4 h-4" /> Start Reading
-                </Link>
-              </Button>
+              </Link>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
 
-      <div className="absolute bottom-4 right-5 flex items-center gap-1.5 z-20">
-        {items.map((_, i) => (
-          <button
-            key={i}
-            onClick={() => setCurrent(i)}
-            className={`rounded-full transition-all duration-300 ${i === current ? "w-6 h-2 bg-primary" : "w-2 h-2 bg-white/30 hover:bg-white/50"}`}
-            aria-label={`Slide ${i + 1}`}
-          />
-        ))}
+      <div className="text-center pt-3 pb-5 px-6">
+        <Link
+          href={`/series/${active?.provider}/${encodeURIComponent(active?.id ?? "")}`}
+          data-testid="text-featured-title"
+        >
+          <h2 className="text-white font-black text-base leading-tight line-clamp-1 hover:text-primary transition-colors">
+            {active?.title}
+          </h2>
+        </Link>
+        <div className="flex items-center justify-center gap-1.5 mt-2">
+          {items.slice(0, 7).map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setCurrent(i)}
+              className={`rounded-full transition-all duration-300 ${i === current ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-white/25 hover:bg-white/40"}`}
+              aria-label={`Slide ${i + 1}`}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
-function SectionTitle({ icon, title, href, count }: { icon: React.ReactNode; title: string; href?: string; count?: number }) {
+function TrendingToday({ items, isLoading }: { items: FeedItem[]; isLoading: boolean }) {
+  const display = items.slice(0, 8);
   return (
-    <div className="flex items-center justify-between mb-4">
-      <div className="flex items-center gap-2.5">
-        <div className="w-1 h-5 bg-primary rounded-full" />
-        <span className="text-primary">{icon}</span>
-        <h2 className="text-base font-bold text-white tracking-tight">{title}</h2>
-        {count !== undefined && (
-          <span className="text-[11px] text-white/30 bg-white/5 px-1.5 py-0.5 rounded-full border border-white/8">{count}</span>
-        )}
-      </div>
-      {href && (
-        <Link href={href} className="text-xs text-primary/70 hover:text-primary flex items-center gap-0.5 font-medium transition-colors">
+    <div className="px-4 py-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-extrabold text-white tracking-tight">Trending Today</h2>
+        <Link href="/popular" className="flex items-center gap-0.5 text-xs text-primary font-semibold hover:text-primary/80 transition-colors">
           View all <ChevronRight className="w-3.5 h-3.5" />
         </Link>
-      )}
-    </div>
-  );
-}
-
-function LatestUpdatesFeed({ items, isLoading }: { items: FeedItem[]; isLoading: boolean }) {
-  return (
-    <div>
-      <SectionTitle icon={<TrendingUp className="w-4 h-4" />} title="Latest Updates" href="/latest" count={isLoading ? undefined : items.length} />
-      <div className="space-y-1">
+      </div>
+      <div className="grid grid-cols-2 gap-3">
         {isLoading
-          ? Array.from({ length: 10 }).map((_, i) => (
-              <div key={i} className="flex gap-3 p-2.5 rounded-lg bg-[#111118] border border-white/[0.06]">
-                <Skeleton className="w-10 h-14 rounded-md shrink-0 bg-[#1a1a24]" />
-                <div className="flex-1 space-y-1.5 py-1">
-                  <Skeleton className="h-3 w-3/4 bg-[#1a1a24]" />
-                  <Skeleton className="h-2.5 w-1/2 bg-[#1a1a24]" />
-                  <Skeleton className="h-2.5 w-1/3 bg-[#1a1a24]" />
-                </div>
+          ? Array.from({ length: 6 }).map((_, i) => (
+              <div key={i}>
+                <Skeleton className="rounded-xl bg-[#1a1a2e] w-full" style={{ aspectRatio: "2/3" }} />
+                <Skeleton className="h-3.5 w-3/4 mt-2 bg-[#1a1a2e] rounded" />
+                <Skeleton className="h-3 w-1/2 mt-1 bg-[#1a1a2e] rounded" />
               </div>
             ))
-          : items.map((item) => (
+          : display.map((item) => (
               <Link
                 key={`${item.provider}-${item.id}`}
                 href={`/series/${item.provider}/${encodeURIComponent(item.id)}`}
-                className="group flex gap-3 p-2.5 rounded-lg bg-[#111118] border border-white/[0.06] hover:border-primary/30 hover:bg-[#111118]/80 transition-all duration-200"
-                data-testid={`feed-item-${item.id}`}
+                className="group"
               >
-                <div className="w-10 h-14 rounded-md overflow-hidden bg-[#0d0d14] shrink-0 border border-white/5">
+                <div className="relative rounded-xl overflow-hidden shadow-lg" style={{ aspectRatio: "2/3" }}>
                   {item.coverImage ? (
                     <img
                       src={proxyImage(item.coverImage)}
@@ -176,40 +171,28 @@ function LatestUpdatesFeed({ items, isLoading }: { items: FeedItem[]; isLoading:
                       onError={(e) => { (e.target as HTMLImageElement).src = item.coverImage; }}
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <BookOpen className="w-4 h-4 text-white/20" />
+                    <div className="w-full h-full bg-[#1a1a2e]" />
+                  )}
+                  {item.type && (
+                    <div className="absolute bottom-1.5 left-1.5 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-black/70 text-white/80">
+                      {item.type}
                     </div>
                   )}
                 </div>
-                <div className="flex-1 min-w-0 flex flex-col justify-center gap-0.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-xs font-semibold text-white/90 group-hover:text-primary transition-colors leading-snug line-clamp-1">
-                      {item.isNew && <span className="inline-block mr-1 text-[9px] font-bold uppercase bg-primary text-white px-1 py-px rounded mr-1">NEW</span>}
-                      {item.title}
-                    </h3>
-                    {item.updatedAt && (
-                      <span className="text-[10px] text-white/30 shrink-0 flex items-center gap-0.5">
-                        <Clock className="w-2.5 h-2.5" />{relativeTime(item.updatedAt)}
-                      </span>
-                    )}
-                  </div>
+                <div className="mt-1.5 px-0.5">
+                  <h3 className="text-sm font-bold text-white/90 group-hover:text-primary transition-colors line-clamp-1 leading-snug">
+                    {item.title}
+                  </h3>
                   {item.latestChapter && (
-                    <span className="text-[11px] text-primary/90 font-medium truncate">{item.latestChapter}</span>
+                    <p className="text-xs text-white/40 mt-0.5 line-clamp-1">{item.latestChapter}</p>
                   )}
-                  <div className="flex items-center gap-2 mt-0.5">
-                    {item.type && (
-                      <span className="text-[9px] text-white/40 bg-white/5 px-1.5 py-px rounded">{item.type}</span>
-                    )}
-                    {item.status && (
-                      <span className={`text-[9px] px-1.5 py-px rounded font-medium ${
-                        item.status.toLowerCase().includes("ongoing") ? "text-emerald-400/80 bg-emerald-500/10" :
-                        item.status.toLowerCase().includes("completed") ? "text-blue-400/80 bg-blue-500/10" :
-                        "text-white/30 bg-white/5"
-                      }`}>{item.status}</span>
-                    )}
-                    {item.rating && (
-                      <span className="flex items-center gap-0.5 text-[9px] text-amber-400 ml-auto">
-                        <Star className="w-2.5 h-2.5 fill-amber-400" />{typeof item.rating === "number" ? item.rating.toFixed(1) : item.rating}
+                  <div className="flex items-center gap-0.5 mt-1">
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Star key={s} className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
+                    ))}
+                    {item.rating != null && (
+                      <span className="text-xs text-white/60 ml-1 font-medium">
+                        {typeof item.rating === "number" ? item.rating.toFixed(1) : item.rating}
                       </span>
                     )}
                   </div>
@@ -221,34 +204,166 @@ function LatestUpdatesFeed({ items, isLoading }: { items: FeedItem[]; isLoading:
   );
 }
 
-function PopularRanked({ items, isLoading }: { items: FeedItem[]; isLoading: boolean }) {
+function LatestUpdatesFeed({ items, isLoading }: { items: FeedItem[]; isLoading: boolean }) {
   return (
-    <div>
-      <SectionTitle icon={<Flame className="w-4 h-4" />} title="Popular Now" href="/popular" count={isLoading ? undefined : items.length} />
-      <div className="space-y-1">
+    <div className="px-4 py-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-extrabold text-white tracking-tight">Latest Updates</h2>
+        <Link href="/latest" className="flex items-center gap-0.5 text-xs text-primary font-semibold hover:text-primary/80 transition-colors">
+          View all <ChevronRight className="w-3.5 h-3.5" />
+        </Link>
+      </div>
+      <div>
         {isLoading
-          ? Array.from({ length: 10 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-2.5 p-2 rounded-lg bg-[#111118] border border-white/[0.06]">
-                <Skeleton className="w-6 h-4 bg-[#1a1a24] rounded shrink-0" />
-                <Skeleton className="w-9 h-12 rounded bg-[#1a1a24] shrink-0" />
-                <div className="flex-1 space-y-1.5">
-                  <Skeleton className="h-3 w-3/4 bg-[#1a1a24]" />
-                  <Skeleton className="h-2.5 w-1/2 bg-[#1a1a24]" />
+          ? Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex gap-3 py-3 border-b border-white/[0.05]">
+                <Skeleton className="w-16 h-16 rounded-lg shrink-0 bg-[#1a1a2e]" />
+                <div className="flex-1 space-y-2 pt-1">
+                  <Skeleton className="h-3.5 w-3/4 bg-[#1a1a2e] rounded" />
+                  <Skeleton className="h-3 w-full bg-[#1a1a2e] rounded" />
+                  <Skeleton className="h-3 w-2/3 bg-[#1a1a2e] rounded" />
                 </div>
               </div>
             ))
-          : items.map((item, idx) => {
+          : items.slice(0, 20).map((item) => (
+              <Link
+                key={`${item.provider}-${item.id}`}
+                href={`/series/${item.provider}/${encodeURIComponent(item.id)}`}
+                className="group flex gap-3 py-3 border-b border-white/[0.05] last:border-0 hover:bg-white/[0.02] -mx-1 px-1 rounded-lg transition-colors"
+                data-testid={`feed-item-${item.id}`}
+              >
+                <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-[#1a1a2e]">
+                  {item.coverImage ? (
+                    <img
+                      src={proxyImage(item.coverImage)}
+                      alt={item.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                      onError={(e) => { (e.target as HTMLImageElement).src = item.coverImage; }}
+                    />
+                  ) : null}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-bold text-white/90 group-hover:text-primary transition-colors line-clamp-1 mb-1.5">
+                    {item.isNew && (
+                      <span className="text-[9px] font-extrabold uppercase bg-primary text-white px-1.5 py-0.5 rounded mr-1.5 align-middle">
+                        NEW
+                      </span>
+                    )}
+                    {item.title}
+                  </h3>
+                  <div className="space-y-1">
+                    {item.latestChapter && (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-primary/90 font-semibold truncate">{item.latestChapter}</span>
+                        {item.updatedAt && (
+                          <span className="text-[10px] text-amber-400/80 shrink-0">{relativeTime(item.updatedAt)}</span>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1.5">
+                      {item.type && (
+                        <span className="text-[10px] text-white/30 bg-white/[0.06] px-1.5 py-px rounded">{item.type}</span>
+                      )}
+                      {item.status && (
+                        <span className={`text-[10px] px-1.5 py-px rounded font-medium ${
+                          item.status.toLowerCase().includes("ongoing")
+                            ? "text-emerald-400/70 bg-emerald-500/10"
+                            : item.status.toLowerCase().includes("completed")
+                            ? "text-blue-400/70 bg-blue-500/10"
+                            : "text-white/30 bg-white/[0.06]"
+                        }`}>
+                          {item.status}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+      </div>
+    </div>
+  );
+}
+
+const POPULAR_PROVIDERS = {
+  weekly: "weebcentral",
+  monthly: "comix",
+  alltime: "mangadex",
+} as const;
+
+type PopularTab = keyof typeof POPULAR_PROVIDERS;
+
+function PopularSection() {
+  const [tab, setTab] = useState<PopularTab>("weekly");
+
+  const { data, isLoading } = useGetPopularManga(
+    { provider: POPULAR_PROVIDERS[tab], page: 1 },
+    { query: { queryKey: ["popular-home", tab] as const, staleTime: 120_000 } },
+  );
+
+  const items = (data?.items ?? []) as FeedItem[];
+
+  return (
+    <div className="px-4 py-5 pb-6">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-xl font-extrabold text-white tracking-tight">Popular</h2>
+        <Link href="/popular" className="flex items-center gap-0.5 text-xs text-primary font-semibold hover:text-primary/80 transition-colors">
+          View all <ChevronRight className="w-3.5 h-3.5" />
+        </Link>
+      </div>
+
+      <div className="flex gap-1.5 mb-5">
+        {(["weekly", "monthly", "alltime"] as PopularTab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-200 ${
+              tab === t
+                ? "bg-primary text-white shadow-lg shadow-primary/25"
+                : "text-white/40 hover:text-white/70"
+            }`}
+          >
+            {t === "weekly" ? "Weekly" : t === "monthly" ? "Monthly" : "All Time"}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-3">
+        {isLoading
+          ? Array.from({ length: 10 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <Skeleton className="w-8 h-8 rounded-full shrink-0 bg-[#1a1a2e]" />
+                <Skeleton className="w-10 h-14 rounded-lg shrink-0 bg-[#1a1a2e]" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-3.5 w-3/4 bg-[#1a1a2e] rounded" />
+                  <Skeleton className="h-3 w-1/2 bg-[#1a1a2e] rounded" />
+                </div>
+              </div>
+            ))
+          : items.slice(0, 10).map((item, idx) => {
               const rank = idx + 1;
-              const rankStyle = rank === 1 ? "text-amber-400 font-black" : rank === 2 ? "text-slate-300 font-black" : rank === 3 ? "text-amber-700 font-black" : "text-white/20 font-bold";
+              const rankBg =
+                idx === 0
+                  ? "bg-amber-400/20 text-amber-400"
+                  : idx === 1
+                  ? "bg-slate-400/15 text-slate-300"
+                  : idx === 2
+                  ? "bg-orange-500/20 text-orange-400"
+                  : "bg-white/[0.05] text-white/25";
               return (
                 <Link
                   key={`${item.provider}-${item.id}`}
                   href={`/series/${item.provider}/${encodeURIComponent(item.id)}`}
-                  className="group flex items-center gap-2.5 p-2 rounded-lg bg-[#111118] border border-white/[0.06] hover:border-primary/30 hover:bg-[#111118]/80 transition-all duration-200"
+                  className="group flex items-center gap-3"
                   data-testid={`popular-item-${item.id}`}
                 >
-                  <span className={`w-6 text-center text-sm shrink-0 ${rankStyle}`}>{rank}</span>
-                  <div className="w-9 h-12 rounded-md overflow-hidden bg-[#0d0d14] shrink-0 border border-white/5">
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-black shrink-0 ${rankBg}`}
+                  >
+                    {rank}
+                  </div>
+                  <div className="w-10 h-14 rounded-lg overflow-hidden shrink-0 bg-[#1a1a2e]">
                     {item.coverImage ? (
                       <img
                         src={proxyImage(item.coverImage)}
@@ -257,23 +372,26 @@ function PopularRanked({ items, isLoading }: { items: FeedItem[]; isLoading: boo
                         loading="lazy"
                         onError={(e) => { (e.target as HTMLImageElement).src = item.coverImage; }}
                       />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <BookOpen className="w-3 h-3 text-white/20" />
-                      </div>
-                    )}
+                    ) : null}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-xs font-semibold text-white/90 group-hover:text-primary transition-colors leading-snug line-clamp-2">{item.title}</h3>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      {item.rating && (
-                        <span className="flex items-center gap-0.5 text-[9px] text-amber-400">
-                          <Star className="w-2.5 h-2.5 fill-amber-400" />{typeof item.rating === "number" ? item.rating.toFixed(1) : item.rating}
-                        </span>
-                      )}
-                      {item.type && (
-                        <span className="text-[9px] text-white/30 bg-white/5 px-1 py-px rounded">{item.type}</span>
-                      )}
+                    <h3 className="text-sm font-bold text-white/90 group-hover:text-primary transition-colors line-clamp-1">
+                      {item.title}
+                    </h3>
+                    {item.genres && item.genres.length > 0 && (
+                      <p className="text-[11px] text-white/30 mt-0.5 line-clamp-1">
+                        {item.genres.slice(0, 3).join(", ")}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-1 mt-1">
+                      <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                      <span className="text-[11px] text-amber-400 font-medium">
+                        {item.rating != null
+                          ? typeof item.rating === "number"
+                            ? item.rating.toFixed(1)
+                            : item.rating
+                          : "—"}
+                      </span>
                     </div>
                   </div>
                 </Link>
@@ -284,52 +402,52 @@ function PopularRanked({ items, isLoading }: { items: FeedItem[]; isLoading: boo
   );
 }
 
-function NewSeriesGrid({ items, isLoading }: { items: FeedItem[]; isLoading: boolean }) {
-  if (!isLoading && items.length === 0) return null;
-  return (
-    <div className="mt-8">
-      <SectionTitle icon={<Sparkles className="w-4 h-4" />} title="New Series" count={isLoading ? undefined : items.length} />
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-        {isLoading
-          ? Array.from({ length: 6 }).map((_, i) => <MangaCardSkeleton key={i} />)
-          : items.slice(0, 12).map((item) => (
-              <MangaCard key={`${item.provider}-${item.id}`} {...item} />
-            ))}
-      </div>
-    </div>
-  );
-}
-
 export default function HomePage() {
   const { data, isLoading } = useGetHomeFeed();
 
+  const featured = (data?.featured ?? []) as FeedItem[];
+  const latestUpdates = (data?.latestUpdates ?? []) as FeedItem[];
+  const popularNow = (data?.popularNow ?? []) as FeedItem[];
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div className="bg-[#07070d] min-h-screen">
       {isLoading ? (
-        <div className="h-[420px] md:h-[500px] rounded-xl bg-[#111118] animate-pulse mb-8" />
+        <div className="bg-[#07070d]" style={{ paddingTop: "0" }}>
+          <div className="relative overflow-hidden" style={{ height: "340px" }}>
+            <div className="absolute inset-0 flex items-center justify-center gap-3">
+              <Skeleton
+                className="rounded-2xl bg-[#1a1a2e] opacity-40"
+                style={{ width: "min(45vw, 188px)", aspectRatio: "2/3" }}
+              />
+              <Skeleton
+                className="rounded-2xl bg-[#1a1a2e]"
+                style={{ width: "min(55vw, 230px)", aspectRatio: "2/3" }}
+              />
+              <Skeleton
+                className="rounded-2xl bg-[#1a1a2e] opacity-40"
+                style={{ width: "min(45vw, 188px)", aspectRatio: "2/3" }}
+              />
+            </div>
+          </div>
+          <div className="flex justify-center gap-1.5 pt-3 pb-5">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton
+                key={i}
+                className="rounded-full bg-[#1a1a2e]"
+                style={{ width: i === 0 ? "20px" : "6px", height: "6px" }}
+              />
+            ))}
+          </div>
+        </div>
       ) : (
-        data?.featured && data.featured.length > 0 && (
-          <FeaturedBanner items={data.featured as FeedItem[]} />
-        )
+        featured.length > 0 && <FeaturedCarousel items={featured} />
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
-        <LatestUpdatesFeed
-          isLoading={isLoading}
-          items={(data?.latestUpdates ?? []) as FeedItem[]}
-        />
-        <PopularRanked
-          isLoading={isLoading}
-          items={(data?.popularNow ?? []) as FeedItem[]}
-        />
+      <div className="max-w-2xl mx-auto">
+        <TrendingToday items={popularNow} isLoading={isLoading} />
+        <LatestUpdatesFeed items={latestUpdates} isLoading={isLoading} />
+        <PopularSection />
       </div>
-
-      {!isLoading && (
-        <NewSeriesGrid
-          isLoading={false}
-          items={(data?.newSeries ?? []) as FeedItem[]}
-        />
-      )}
     </div>
   );
 }

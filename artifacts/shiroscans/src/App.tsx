@@ -32,24 +32,25 @@ const queryClient = new QueryClient({
   },
 });
 
-function Router() {
+function LayoutedRoutes() {
   return (
-    <Switch>
-      <Route path="/" component={HomePage} />
-      <Route path="/latest" component={LatestPage} />
-      <Route path="/popular" component={PopularPage} />
-      <Route path="/search" component={SearchPage} />
-      <Route path="/series/:provider/:id" component={SeriesPage} />
-      <Route path="/read/:provider/:seriesId/:chapterId" component={ReaderPage} />
-      <Route path="/bookmarks" component={BookmarksPage} />
-      <Route path="/history" component={HistoryPage} />
-      <Route path="/favourites" component={FavouritesPage} />
-      <Route path="/profile" component={ProfilePage} />
-      <Route path="/settings" component={SettingsPage} />
-      <Route path="/login" component={LoginPage} />
-      <Route path="/register" component={RegisterPage} />
-      <Route component={NotFound} />
-    </Switch>
+    <Layout>
+      <Switch>
+        <Route path="/" component={HomePage} />
+        <Route path="/latest" component={LatestPage} />
+        <Route path="/popular" component={PopularPage} />
+        <Route path="/search" component={SearchPage} />
+        <Route path="/series/:provider/:id" component={SeriesPage} />
+        <Route path="/bookmarks" component={BookmarksPage} />
+        <Route path="/history" component={HistoryPage} />
+        <Route path="/favourites" component={FavouritesPage} />
+        <Route path="/profile" component={ProfilePage} />
+        <Route path="/settings" component={SettingsPage} />
+        <Route path="/login" component={LoginPage} />
+        <Route path="/register" component={RegisterPage} />
+        <Route component={NotFound} />
+      </Switch>
+    </Layout>
   );
 }
 
@@ -58,9 +59,10 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Layout>
-            <Router />
-          </Layout>
+          <Switch>
+            <Route path="/read/:provider/:seriesId/:chapterId" component={ReaderPage} />
+            <Route component={LayoutedRoutes} />
+          </Switch>
         </WouterRouter>
         <Toaster />
       </TooltipProvider>
