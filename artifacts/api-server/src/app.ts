@@ -7,6 +7,10 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+// Trust the first proxy hop (Replit reverse proxy / deployed load balancer)
+// Required for secure cookies to be set correctly behind HTTPS proxies.
+app.set("trust proxy", 1);
+
 // ─── CORS ────────────────────────────────────────────────────────────────────
 // Allow the Replit dev proxy domain and localhost origins.
 // In production, restrict to the configured CORS_ORIGIN env var.
