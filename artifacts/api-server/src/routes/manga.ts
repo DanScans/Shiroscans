@@ -787,6 +787,14 @@ router.get("/manga/tags", async (_req, res): Promise<void> => {
   }
 });
 
+// Domains that browsers can load directly (CORS-friendly CDNs).
+// For these we issue a 302 redirect instead of proxying server-side,
+// because their bot-protection blocks datacenter IPs.
+const BROWSER_DIRECT_HOSTS = new Set([
+  "uploads.mangadex.org",
+  "cmdxd98sb0x3yprd.mangadex.network",
+]);
+
 // GET /proxy-image?url=<encoded-url>  — server-side image proxy so covers always load regardless of CORS/referer restrictions
 router.get("/proxy-image", async (req, res): Promise<void> => {
   let rawUrl = String(req.query.url ?? "");
@@ -796,6 +804,19 @@ router.get("/proxy-image", async (req, res): Promise<void> => {
     res.status(400).end();
     return;
   }
+
+  // For browser-friendly CDNs, redirect — let the browser fetch directly
+  try {
+    const parsed = new URL(rawUrl);
+    if (BROWSER_DIRECT_HOSTS.has(parsed.hostname)) {
+      res.redirect(302, rawUrl);
+      return;
+    }
+  } catch {
+    res.status(400).end();
+    return;
+  }
+
   try {
     const upstream = await fetch(rawUrl, {
       headers: {
