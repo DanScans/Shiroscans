@@ -774,4 +774,38 @@ router.get("/manga/tags", async (_req, res): Promise<void> => {
   }
 });
 
+// GET /proxy-image?url=<encoded-url>  — server-side image proxy so covers always load regardless of CORS/referer restrictions
+router.get("/proxy-image", async (req, res): Promise<void> => {
+  let rawUrl = String(req.query.url ?? "");
+  if (!rawUrl) { res.status(400).end(); return; }
+  if (rawUrl.startsWith("//")) rawUrl = "https:" + rawUrl;
+  if (!rawUrl.startsWith("http://") && !rawUrl.startsWith("https://")) {
+    res.status(400).end();
+    return;
+  }
+  try {
+    const upstream = await fetch(rawUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; ShiroScans/2.0) AppleWebKit/537.36",
+        "Referer": "https://mangadex.org/",
+        "Accept": "image/webp,image/avif,image/*,*/*;q=0.8",
+      },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!upstream.ok) {
+      res.status(upstream.status).end();
+      return;
+    }
+    const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
+    const buffer = await upstream.arrayBuffer();
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.status(200).send(Buffer.from(buffer));
+  } catch (err) {
+    req.log.error({ err }, "Image proxy failed");
+    res.status(502).end();
+  }
+});
+
 export default router;
