@@ -3,3 +3,4 @@
 - [MangaPlus API blocked](mangaplus-blocked.md) — MangaPlus jumpg-webapi.tokyo-cdn.com returns FailureResult "Account Banned" from Replit IPs; use MangaDex instead
 - [MangaDex image loading](mangadex-images.md) — MangaDex CDN (uploads.mangadex.org) blocks server-side proxy requests (returns 400); load covers directly in browser; only proxy chapter at-home-server pages through backend
 - [MangaFire scraper](mangafire-scraper.md) — working selectors, CDN proxy fix, reader embed fallback, Cloudflare keyword-search block
+- [Atsumaru/atsu.moe provider](atsu-provider.md) — Typesense API at atsu.moe + WeebCentral chapters; covers proxied via proxy-image; chapter images Cloudflare-protected so always use embedUrl iframe fallback

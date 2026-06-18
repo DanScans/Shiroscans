@@ -10,18 +10,7 @@ function proxyImg(url: string): string {
   return `${BASE}/api/proxy-image?url=${encodeURIComponent(url)}`;
 }
 
-function starsDisplay(r: number | null): string {
-  if (r === null || r === undefined) return "";
-  if (r >= 9.5) return "⭐⭐⭐⭐⭐";
-  if (r >= 9.0) return "⭐⭐⭐⭐✨";
-  if (r >= 8.5) return "⭐⭐⭐⭐";
-  if (r >= 8.0) return "⭐⭐⭐✨";
-  if (r >= 7.5) return "⭐⭐⭐";
-  if (r >= 7.0) return "⭐⭐✨";
-  return "⭐⭐";
-}
-
-interface AtsuItem {
+interface ManhwaItem {
   id: string;
   slug: string;
   title: string;
@@ -31,15 +20,14 @@ interface AtsuItem {
   rating: number | null;
   latestChapter: string | null;
   genres: string[];
-  totalChapters?: number;
+  chapters?: Array<{ id: string; number: number; title: string; releaseDate: string | null }>;
 }
 
-// ─── Hero Carousel ────────────────────────────────────────────────────────────
-function HeroCarousel({ items }: { items: AtsuItem[] }) {
+function HeroCarousel({ items }: { items: ManhwaItem[] }) {
   const [idx, setIdx] = useState(0);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
-  const count = Math.min(30, items.length);
+  const count = Math.min(20, items.length);
   if (!count) return null;
   const active = items[idx % count]!;
 
@@ -60,12 +48,8 @@ function HeroCarousel({ items }: { items: AtsuItem[] }) {
 
   return (
     <div className="relative bg-[#07070d]">
-      <div
-        className="relative overflow-hidden select-none"
-        style={{ height: "300px" }}
-        onTouchStart={onTouchStart}
-        onTouchEnd={onTouchEnd}
-      >
+      <div className="relative overflow-hidden select-none" style={{ height: "300px" }}
+        onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {visible.map((offset) => {
           const i = ((idx + offset) % count + count) % count;
           const item = items[i]!;
@@ -73,33 +57,17 @@ function HeroCarousel({ items }: { items: AtsuItem[] }) {
           const opacity = offset === 0 ? 1 : Math.abs(offset) === 1 ? 0.65 : 0.3;
           const zIndex = offset === 0 ? 30 : Math.abs(offset) === 1 ? 20 : 10;
           return (
-            <div
-              key={`${i}-${offset}`}
+            <div key={`${i}-${offset}`}
               className="absolute top-0 bottom-0 flex items-center transition-all duration-500 ease-out cursor-pointer"
-              style={{
-                left: "50%",
-                transform: `translateX(calc(-50% + ${offset * 58}vw)) scale(${scale})`,
-                zIndex, opacity,
-                width: "min(52vw, 210px)",
-                filter: offset === 0 ? "none" : "brightness(0.35)",
-              }}
-              onClick={() => { if (offset !== 0) setIdx(i); }}
-            >
-              <Link
-                href={offset === 0 ? `/series/${encodeURIComponent(item.slug)}` : "#"}
-                onClick={(e) => { if (offset !== 0) e.preventDefault(); }}
-                className="block w-full"
-              >
+              style={{ left: "50%", transform: `translateX(calc(-50% + ${offset * 58}vw)) scale(${scale})`, zIndex, opacity, width: "min(52vw, 210px)", filter: offset === 0 ? "none" : "brightness(0.35)" }}
+              onClick={() => { if (offset !== 0) setIdx(i); }}>
+              <Link href={offset === 0 ? `/manhwa/series/${encodeURIComponent(item.slug)}` : "#"}
+                onClick={(e) => { if (offset !== 0) e.preventDefault(); }} className="block w-full">
                 <div className="relative rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: "2/3" }}>
                   {item.coverUrl ? (
                     <img src={proxyImg(item.coverUrl)} alt={item.title} className="w-full h-full object-cover" loading="eager" />
                   ) : (
                     <div className="w-full h-full bg-[#1a1a2e]" />
-                  )}
-                  {item.rating !== null && offset === 0 && (
-                    <div className="absolute top-2 left-2 bg-black/75 backdrop-blur-sm text-yellow-400 text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
-                      ⭐ {item.rating.toFixed(1)}
-                    </div>
                   )}
                 </div>
               </Link>
@@ -107,25 +75,18 @@ function HeroCarousel({ items }: { items: AtsuItem[] }) {
           );
         })}
       </div>
-
       <div className="text-center pt-2 pb-1 px-6">
-        <Link href={`/series/${encodeURIComponent(active.slug)}`}>
-          <h2 className="text-white font-black text-base leading-tight line-clamp-1 hover:text-primary transition-colors">
-            {active.title}
-          </h2>
+        <Link href={`/manhwa/series/${encodeURIComponent(active.slug)}`}>
+          <h2 className="text-white font-black text-base leading-tight line-clamp-1 hover:text-primary transition-colors">{active.title}</h2>
         </Link>
       </div>
-
       <div className="flex items-center justify-center gap-1 pb-4">
         {Array.from({ length: Math.min(7, count) }).map((_, i) => {
           const dotIdx = idx <= 3 ? i : idx >= count - 4 ? count - 7 + i : idx - 3 + i;
           const isActive = dotIdx === idx;
           return (
-            <button
-              key={i}
-              onClick={() => setIdx(dotIdx)}
-              className={`rounded-full transition-all duration-300 ${isActive ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-white/25"}`}
-            />
+            <button key={i} onClick={() => setIdx(dotIdx)}
+              className={`rounded-full transition-all duration-300 ${isActive ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-white/25"}`} />
           );
         })}
       </div>
@@ -133,35 +94,30 @@ function HeroCarousel({ items }: { items: AtsuItem[] }) {
   );
 }
 
-function TrendingCard({ item }: { item: AtsuItem }) {
+function TrendingCard({ item }: { item: ManhwaItem }) {
   return (
-    <Link href={`/series/${encodeURIComponent(item.slug)}`} className="group block">
+    <Link href={`/manhwa/series/${encodeURIComponent(item.slug)}`} className="group block">
       <div className="relative rounded-xl overflow-hidden bg-[#13131f] shadow-lg" style={{ aspectRatio: "2/3" }}>
         {item.coverUrl ? (
           <img src={proxyImg(item.coverUrl)} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-[#2a1a2e] to-[#1a1a2e]" />
+          <div className="w-full h-full bg-[#1a1a2e]" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
       </div>
       <div className="mt-2 px-0.5">
         <h3 className="text-xs font-bold text-white/90 group-hover:text-primary transition-colors line-clamp-2 leading-snug">{item.title}</h3>
-        {item.latestChapter && (
-          <p className="text-[10px] text-white/45 mt-0.5">{item.latestChapter}</p>
-        )}
-        {item.rating !== null && (
-          <p className="text-[10px] text-yellow-400 mt-0.5 font-semibold">
-            {starsDisplay(item.rating)} {item.rating.toFixed(1)}/10
-          </p>
-        )}
+        {item.latestChapter && <p className="text-[10px] text-white/45 mt-0.5">{item.latestChapter}</p>}
       </div>
     </Link>
   );
 }
 
-function LatestRow({ item }: { item: AtsuItem }) {
+function LatestRow({ item }: { item: ManhwaItem }) {
+  const latestCh = item.chapters?.[0];
+  const prevCh = item.chapters?.[1];
   return (
-    <Link href={`/series/${encodeURIComponent(item.slug)}`} className="group flex gap-3 py-3 border-b border-white/[0.05] hover:bg-white/[0.02] rounded-lg px-1 -mx-1 transition-colors">
+    <Link href={`/manhwa/series/${encodeURIComponent(item.slug)}`} className="group flex gap-3 py-3 border-b border-white/[0.05] hover:bg-white/[0.02] rounded-lg px-1 -mx-1 transition-colors">
       <div className="w-14 shrink-0 rounded-lg overflow-hidden bg-[#13131f]" style={{ aspectRatio: "2/3" }}>
         {item.coverUrl ? (
           <img src={proxyImg(item.coverUrl)} alt={item.title} className="w-full h-full object-cover" loading="lazy" />
@@ -170,17 +126,19 @@ function LatestRow({ item }: { item: AtsuItem }) {
         )}
       </div>
       <div className="flex-1 min-w-0 pt-0.5">
-        <p className="text-sm font-bold text-white/90 group-hover:text-primary transition-colors line-clamp-1 leading-snug">
-          {item.title}
-        </p>
+        <p className="text-sm font-bold text-white/90 group-hover:text-primary transition-colors line-clamp-1">{item.title}</p>
         <div className="mt-1.5 space-y-1">
-          {item.latestChapter && (
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-white/50 line-clamp-1">{item.latestChapter}</span>
+          {latestCh && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] bg-primary/15 text-primary/80 px-1.5 py-0.5 rounded font-semibold">Ch.{latestCh.number}</span>
+              {latestCh.releaseDate && <span className="text-[10px] text-white/30">{formatDate(latestCh.releaseDate)}</span>}
             </div>
           )}
-          {item.genres.slice(0, 2).length > 0 && (
-            <span className="text-[10px] text-white/30">{item.genres.slice(0, 2).join(" · ")}</span>
+          {prevCh && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] bg-white/[0.06] text-white/40 px-1.5 py-0.5 rounded font-medium">Ch.{prevCh.number}</span>
+              {prevCh.releaseDate && <span className="text-[10px] text-white/20">{formatDate(prevCh.releaseDate)}</span>}
+            </div>
           )}
         </div>
       </div>
@@ -188,29 +146,35 @@ function LatestRow({ item }: { item: AtsuItem }) {
   );
 }
 
-function PopularRankedRow({ item, rank }: { item: AtsuItem; rank: number }) {
+function formatDate(d: string | null): string {
+  if (!d) return "";
+  try {
+    const diff = Date.now() - new Date(d).getTime();
+    const days = Math.floor(diff / 86400000);
+    if (days < 1) return "today";
+    if (days === 1) return "1d ago";
+    if (days < 7) return `${days}d ago`;
+    if (days < 14) return "1w ago";
+    if (days < 30) return `${Math.floor(days / 7)}w ago`;
+    return `${Math.floor(days / 30)}mo ago`;
+  } catch { return d; }
+}
+
+function PopularRankedRow({ item, rank }: { item: ManhwaItem; rank: number }) {
   return (
-    <Link href={`/series/${encodeURIComponent(item.slug)}`} className="group flex gap-3 py-3 border-b border-white/[0.05] hover:bg-white/[0.02] rounded-lg px-1 -mx-1 transition-colors">
+    <Link href={`/manhwa/series/${encodeURIComponent(item.slug)}`} className="group flex gap-3 py-3 border-b border-white/[0.05] hover:bg-white/[0.02] rounded-lg px-1 -mx-1 transition-colors">
       <div className="relative w-14 shrink-0 rounded-lg overflow-hidden bg-[#13131f]" style={{ aspectRatio: "2/3" }}>
-        <span className="absolute top-0 left-0 z-10 bg-black/80 text-white text-[10px] font-black px-1.5 py-0.5 rounded-br-lg leading-tight">
-          #{rank}
-        </span>
+        <span className="absolute top-0 left-0 z-10 bg-black/80 text-white text-[10px] font-black px-1.5 py-0.5 rounded-br-lg leading-tight">#{rank}</span>
         {item.coverUrl ? (
-          <img src={proxyImg(item.coverUrl)} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+          <img src={proxyImg(item.coverUrl)} alt={item.title} className="w-full h-full object-cover" loading="lazy" />
         ) : (
           <div className="w-full h-full bg-[#1a1a2e]" />
         )}
       </div>
       <div className="flex-1 min-w-0 pt-1">
         <p className="text-sm font-bold text-white/90 group-hover:text-primary transition-colors line-clamp-1">{item.title}</p>
-        {item.genres.length > 0 && (
-          <p className="text-[10px] text-white/35 mt-1 line-clamp-1">{item.genres.slice(0, 3).join(" · ")}</p>
-        )}
-        {item.rating !== null && (
-          <p className="text-[11px] text-yellow-400 mt-1 font-semibold">
-            {starsDisplay(item.rating)} {item.rating.toFixed(1)}
-          </p>
-        )}
+        {item.genres.length > 0 && <p className="text-[10px] text-white/35 mt-1 line-clamp-1">{item.genres.slice(0, 3).join(" · ")}</p>}
+        {item.rating !== null && <p className="text-[11px] text-yellow-400 mt-1 font-semibold">⭐ {item.rating.toFixed(1)}</p>}
       </div>
     </Link>
   );
@@ -221,7 +185,6 @@ function SkeletonCard() {
     <div>
       <Skeleton className="rounded-xl bg-[#13131f] w-full" style={{ aspectRatio: "2/3" }} />
       <Skeleton className="h-3 w-3/4 mt-2 bg-[#13131f] rounded" />
-      <Skeleton className="h-3 w-1/2 mt-1 bg-[#13131f] rounded" />
     </div>
   );
 }
@@ -233,7 +196,6 @@ function SkeletonRow() {
       <div className="flex-1 space-y-2 pt-1">
         <Skeleton className="h-3.5 w-3/4 bg-[#13131f] rounded" />
         <Skeleton className="h-3 w-1/2 bg-[#13131f] rounded" />
-        <Skeleton className="h-3 w-2/3 bg-[#13131f] rounded" />
       </div>
     </div>
   );
@@ -244,14 +206,13 @@ function Pagination({ page, totalPages, onPage }: { page: number; totalPages: nu
   const start = Math.max(1, page - 2);
   const end = Math.min(totalPages, start + 4);
   for (let p = start; p <= end; p++) pages.push(p);
-
   return (
     <div className="flex items-center justify-center gap-1 pt-5 pb-2">
       <button onClick={() => onPage(page - 1)} disabled={page <= 1}
         className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-white/40 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-all">‹</button>
       {pages.map((p) => (
         <button key={p} onClick={() => onPage(p)}
-          className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${p === page ? "bg-primary text-white shadow-md shadow-primary/20" : "text-white/40 hover:text-white hover:bg-white/[0.06]"}`}>
+          className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${p === page ? "bg-primary text-white" : "text-white/40 hover:text-white hover:bg-white/[0.06]"}`}>
           {p}
         </button>
       ))}
@@ -261,28 +222,22 @@ function Pagination({ page, totalPages, onPage }: { page: number; totalPages: nu
   );
 }
 
-export default function HomePage() {
-  const [homeData, setHomeData] = useState<{ featured: AtsuItem[]; latest: AtsuItem[] } | null>(null);
+export default function ManhwaHomePage() {
+  const [homeData, setHomeData] = useState<{ featured: ManhwaItem[]; popular: ManhwaItem[]; latest: ManhwaItem[] } | null>(null);
   const [homeLoading, setHomeLoading] = useState(true);
-  const [trending, setTrending] = useState<AtsuItem[]>([]);
 
   const [popularPeriod, setPopularPeriod] = useState<"weekly" | "monthly" | "alltime">("weekly");
-  const [popularData, setPopularData] = useState<Record<string, AtsuItem[]>>({});
+  const [popularData, setPopularData] = useState<Record<string, ManhwaItem[]>>({});
   const [popularLoading, setPopularLoading] = useState(false);
 
   const [latestPage, setLatestPage] = useState(1);
-  const [latestPageData, setLatestPageData] = useState<Record<number, { items: AtsuItem[]; totalPages: number }>>({});
+  const [latestPageData, setLatestPageData] = useState<Record<number, { items: ManhwaItem[]; totalPages: number }>>({});
   const [latestPageLoading, setLatestPageLoading] = useState(false);
 
   useEffect(() => {
-    Promise.all([
-      fetch(`${BASE}/api/atsu/home`).then((r) => r.ok ? r.json() : Promise.reject(r)),
-      fetch(`${BASE}/api/atsu/trending`).then((r) => r.ok ? r.json() : null),
-    ])
-      .then(([home, trendData]) => {
-        setHomeData(home);
-        if (trendData?.items) setTrending(trendData.items);
-      })
+    fetch(`${BASE}/api/asurascans/home`)
+      .then((r) => r.ok ? r.json() : Promise.reject(r))
+      .then((d) => setHomeData(d))
       .catch(() => {})
       .finally(() => setHomeLoading(false));
   }, []);
@@ -290,29 +245,27 @@ export default function HomePage() {
   useEffect(() => {
     if (popularData[popularPeriod]) return;
     setPopularLoading(true);
-    fetch(`${BASE}/api/atsu/popular?period=${popularPeriod}`)
+    fetch(`${BASE}/api/asurascans/popular?period=${popularPeriod}`)
       .then((r) => r.ok ? r.json() : Promise.reject(r))
       .then((d) => setPopularData((prev) => ({ ...prev, [popularPeriod]: d.items ?? [] })))
-      .catch(() => {})
-      .finally(() => setPopularLoading(false));
+      .catch(() => {}).finally(() => setPopularLoading(false));
   }, [popularPeriod]);
 
   useEffect(() => {
     if (latestPageData[latestPage]) return;
     setLatestPageLoading(true);
-    fetch(`${BASE}/api/atsu/latest?page=${latestPage}`)
+    fetch(`${BASE}/api/asurascans/latest?page=${latestPage}`)
       .then((r) => r.ok ? r.json() : Promise.reject(r))
       .then((d) => setLatestPageData((prev) => ({ ...prev, [latestPage]: { items: d.items ?? [], totalPages: d.totalPages ?? 5 } })))
-      .catch(() => {})
-      .finally(() => setLatestPageLoading(false));
+      .catch(() => {}).finally(() => setLatestPageLoading(false));
   }, [latestPage]);
 
   const featured = homeData?.featured ?? [];
   const latestFromHome = homeData?.latest ?? [];
   const currentLatest = latestPageData[latestPage]?.items ?? [];
   const totalLatestPages = latestPageData[latestPage]?.totalPages ?? 5;
-  const currentPopular = popularData[popularPeriod] ?? [];
-  const carouselItems = featured.length > 0 ? featured : trending;
+  const currentPopular = popularData[popularPeriod] ?? (homeData?.popular ?? []);
+  const carouselItems = featured;
 
   return (
     <div className="bg-[#07070d] min-h-screen">
@@ -323,44 +276,38 @@ export default function HomePage() {
             <Skeleton className="rounded-2xl bg-[#13131f]" style={{ width: "min(52vw, 210px)", aspectRatio: "2/3" }} />
             <Skeleton className="rounded-2xl bg-[#13131f] opacity-40" style={{ width: "min(42vw, 180px)", aspectRatio: "2/3" }} />
           </div>
-          <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-1">
-            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="w-1.5 h-1.5 rounded-full bg-[#13131f]" />)}
-          </div>
         </div>
-      ) : (
-        carouselItems.length > 0 && <HeroCarousel items={carouselItems} />
-      )}
+      ) : carouselItems.length > 0 ? (
+        <HeroCarousel items={carouselItems} />
+      ) : null}
 
       <div className="max-w-2xl mx-auto px-4">
         <section className="pt-6 pb-4">
-          <h2 className="text-base font-extrabold text-white mb-4">Trending Today</h2>
+          <h2 className="text-base font-extrabold text-white mb-4">Trending Manhwa</h2>
           <div className="grid grid-cols-4 gap-2.5">
             {homeLoading
               ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
-              : trending.slice(0, 4).map((item) => <TrendingCard key={item.id || item.slug} item={item} />)
+              : featured.slice(0, 4).map((item) => <TrendingCard key={item.slug} item={item} />)
             }
           </div>
         </section>
 
         <section className="pt-4 pb-4">
-          <h2 className="text-base font-extrabold text-white mb-4">Latest Added</h2>
+          <h2 className="text-base font-extrabold text-white mb-4">Latest Updated</h2>
           <div>
             {latestPageLoading || (homeLoading && latestPage === 1)
               ? Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
               : (currentLatest.length > 0 ? currentLatest : latestFromHome).map((item, i) => (
-                  <LatestRow key={item.id || item.slug || i} item={item} />
+                  <LatestRow key={item.slug || i} item={item} />
                 ))
             }
           </div>
-          <Pagination
-            page={latestPage}
-            totalPages={Math.max(totalLatestPages, 5)}
-            onPage={(p) => { setLatestPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-          />
+          <Pagination page={latestPage} totalPages={Math.max(totalLatestPages, 5)}
+            onPage={(p) => { setLatestPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
         </section>
 
         <section className="pt-4 pb-10">
-          <h2 className="text-base font-extrabold text-white mb-3">Popular</h2>
+          <h2 className="text-base font-extrabold text-white mb-3">Popular Manhwa</h2>
           <div className="flex gap-1 mb-4">
             {(["weekly", "monthly", "alltime"] as const).map((period) => (
               <button key={period} onClick={() => setPopularPeriod(period)}
@@ -372,9 +319,7 @@ export default function HomePage() {
           <div>
             {popularLoading
               ? Array.from({ length: 10 }).map((_, i) => <SkeletonRow key={i} />)
-              : currentPopular.slice(0, 10).map((item, i) => (
-                  <PopularRankedRow key={item.id || item.slug || i} item={item} rank={i + 1} />
-                ))
+              : currentPopular.slice(0, 10).map((item, i) => <PopularRankedRow key={item.slug || i} item={item} rank={i + 1} />)
             }
           </div>
         </section>

@@ -20,23 +20,6 @@ function proxyImg(url: string): string {
   return `${BASE}/api/proxy-image?url=${encodeURIComponent(url)}`;
 }
 
-function timeAgo(dateStr: string | null): string {
-  if (!dateStr) return "";
-  try {
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    const diff = Date.now() - d.getTime();
-    const days = Math.floor(diff / 86400000);
-    if (days < 1) return "today";
-    if (days === 1) return "1 day ago";
-    if (days < 7) return `${days} days ago`;
-    if (days < 14) return "last week";
-    if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
-    if (days < 60) return "last month";
-    return `${Math.floor(days / 30)} months ago`;
-  } catch { return dateStr; }
-}
-
 function commentTimeAgo(iso: string): string {
   try {
     const diff = Date.now() - new Date(iso).getTime();
@@ -46,18 +29,18 @@ function commentTimeAgo(iso: string): string {
     const h = Math.floor(m / 60);
     if (h < 24) return `${h}h ago`;
     const d = Math.floor(h / 24);
-    return d < 30 ? `${d}d ago` : new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    return d < 30 ? `${d}d ago` : new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   } catch { return ""; }
 }
 
-interface Chapter {
+interface AsuraChapter {
   id: string;
   number: number;
   title: string;
   releaseDate: string | null;
 }
 
-interface SeriesData {
+interface AsuraSeries {
   id: string;
   slug: string;
   title: string;
@@ -68,28 +51,16 @@ interface SeriesData {
   rating: number | null;
   genres: string[];
   altTitles: string[];
-  authors: string[];
-  year: number | null;
+  author: string;
   totalChapters: number;
-  weebCentralId: string | null;
+  chapters: AsuraChapter[];
 }
 
-interface ReactionData {
-  love: number; fire: number; wow: number; sad: number; angry: number;
-  upvote?: number; funny?: number; surprised?: number;
-  userReaction: string | null;
-}
+interface ReactionData { love: number; fire: number; wow: number; sad: number; angry: number; upvote?: number; funny?: number; surprised?: number; userReaction: string | null; }
+interface RatingData { average: number | null; total: number; userRating: number | null; }
+interface Comment { id: number; content: string; createdAt: string; userId: number; username: string; avatarUrl: string | null; }
 
-interface RatingData {
-  average: number | null; total: number; userRating: number | null;
-}
-
-interface Comment {
-  id: number; content: string; createdAt: string;
-  userId: number; username: string; avatarUrl: string | null;
-}
-
-const REACTIONS: { key: string; emoji: string; label: string }[] = [
+const REACTIONS = [
   { key: "upvote", emoji: "👍", label: "Upvote" },
   { key: "funny", emoji: "😂", label: "Funny" },
   { key: "love", emoji: "❤️", label: "Love" },
@@ -98,9 +69,7 @@ const REACTIONS: { key: string; emoji: string; label: string }[] = [
   { key: "sad", emoji: "😢", label: "Sad" },
 ];
 
-function StarRatingWidget({ value, total, userRating, onRate }: {
-  value: number | null; total: number; userRating: number | null; onRate: (v: number) => void;
-}) {
+function StarRatingWidget({ value, total, userRating, onRate }: { value: number | null; total: number; userRating: number | null; onRate: (v: number) => void; }) {
   const [hover, setHover] = useState(0);
   const stars = [2, 4, 6, 8, 10];
   const display = hover || userRating || value || 0;
@@ -108,36 +77,27 @@ function StarRatingWidget({ value, total, userRating, onRate }: {
     <div className="flex items-center gap-2">
       <div className="flex gap-0.5">
         {stars.map((v) => (
-          <button key={v} onMouseEnter={() => setHover(v)} onMouseLeave={() => setHover(0)} onClick={() => onRate(v)} className="p-0.5 transition-transform hover:scale-110" aria-label={`Rate ${v / 2}`}>
+          <button key={v} onMouseEnter={() => setHover(v)} onMouseLeave={() => setHover(0)} onClick={() => onRate(v)} className="p-0.5 transition-transform hover:scale-110">
             <Star className={`w-5 h-5 transition-colors ${display >= v ? "fill-yellow-400 text-yellow-400" : "fill-transparent text-white/20"}`} />
           </button>
         ))}
       </div>
-      {value !== null && (
-        <span className="text-xs text-white/40">{value.toFixed(1)} <span className="text-white/20">({total})</span></span>
-      )}
+      {value !== null && <span className="text-xs text-white/40">{value.toFixed(1)} <span className="text-white/20">({total})</span></span>}
     </div>
   );
 }
 
-export default function MangaFireSeriesDetailPage() {
+export default function ManhwaSeriesDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [series, setSeries] = useState<SeriesData | null>(null);
+  const [series, setSeries] = useState<AsuraSeries | null>(null);
   const [seriesLoading, setSeriesLoading] = useState(true);
-
-  const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [chaptersLoading, setChaptersLoading] = useState(false);
-  const [chaptersLoaded, setChaptersLoaded] = useState(false);
-
   const [descExpanded, setDescExpanded] = useState(false);
-  const [altExpanded, setAltExpanded] = useState(false);
   const [sortNewest, setSortNewest] = useState(true);
   const [chapterSearch, setChapterSearch] = useState("");
-
   const [reactions, setReactions] = useState<ReactionData | null>(null);
   const [reacting, setReacting] = useState(false);
   const [rating, setRating] = useState<RatingData | null>(null);
@@ -153,56 +113,34 @@ export default function MangaFireSeriesDetailPage() {
   useEffect(() => {
     if (!safeSlug) return;
     setSeriesLoading(true);
-    setChapters([]);
-    setChaptersLoaded(false);
-    fetch(`${BASE}/api/atsu/series/${encodeURIComponent(safeSlug)}`)
+    fetch(`${BASE}/api/asurascans/series/${encodeURIComponent(safeSlug)}`)
       .then((r) => r.ok ? r.json() : Promise.reject(r))
-      .then((d: SeriesData) => setSeries(d))
+      .then((d: AsuraSeries) => setSeries(d))
       .catch(() => toast({ description: "Failed to load series", variant: "destructive" }))
       .finally(() => setSeriesLoading(false));
-  }, [safeSlug]);
 
-  useEffect(() => {
-    if (!safeSlug) return;
-    fetch(`${BASE}/api/reactions/atsu/${encodeURIComponent(safeSlug)}/${SERIES_CHAPTER}`)
+    fetch(`${BASE}/api/reactions/asurascans/${encodeURIComponent(safeSlug)}/${SERIES_CHAPTER}`)
       .then((r) => r.ok ? r.json() : null).then((d) => d && setReactions(d)).catch(() => {});
-    fetch(`${BASE}/api/ratings/atsu/${encodeURIComponent(safeSlug)}`)
+    fetch(`${BASE}/api/ratings/asurascans/${encodeURIComponent(safeSlug)}`)
       .then((r) => r.ok ? r.json() : null).then((d) => d && setRating(d)).catch(() => {});
     setLoadingComments(true);
-    fetch(`${BASE}/api/comments/atsu/${encodeURIComponent(safeSlug)}/${SERIES_CHAPTER}?limit=10&sortBy=newest`)
+    fetch(`${BASE}/api/comments/asurascans/${encodeURIComponent(safeSlug)}/${SERIES_CHAPTER}?limit=10&sortBy=newest`)
       .then((r) => r.ok ? r.json() : null)
       .then((d) => { if (d) { setComments(d.comments ?? []); setCommentTotal(d.total ?? 0); } })
       .catch(() => {}).finally(() => setLoadingComments(false));
   }, [safeSlug]);
 
-  function loadChapters() {
-    if (chaptersLoaded || chaptersLoading || !series?.weebCentralId) return;
-    setChaptersLoading(true);
-    fetch(`${BASE}/api/atsu/chapters/${encodeURIComponent(series.weebCentralId)}`)
-      .then((r) => r.ok ? r.json() : Promise.reject(r))
-      .then((d: { chapters: Chapter[] }) => {
-        setChapters(d.chapters ?? []);
-        setChaptersLoaded(true);
-      })
-      .catch(() => toast({ description: "Failed to load chapters", variant: "destructive" }))
-      .finally(() => setChaptersLoading(false));
-  }
-
   const { data: user } = useGetMe({ query: { queryKey: getGetMeQueryKey(), retry: false } });
   const { data: bookmarks } = useGetBookmarks({ query: { enabled: !!user, queryKey: getGetBookmarksQueryKey() } });
-  const isBookmarked = bookmarks?.some((b) => b.provider === "atsu" && b.seriesId === safeSlug);
-
+  const isBookmarked = bookmarks?.some((b) => b.provider === "asurascans" && b.seriesId === safeSlug);
   const addBookmark = useAddBookmark({ mutation: { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getGetBookmarksQueryKey() }); toast({ description: "Bookmarked!" }); } } });
   const removeBookmark = useRemoveBookmark({ mutation: { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getGetBookmarksQueryKey() }); toast({ description: "Removed" }); } } });
 
   function toggleBookmark() {
     if (!user) { toast({ description: "Login to bookmark", variant: "destructive" }); return; }
     if (!series) return;
-    if (isBookmarked) {
-      removeBookmark.mutate({ provider: "atsu", seriesId: safeSlug });
-    } else {
-      addBookmark.mutate({ data: { provider: "atsu", seriesId: safeSlug, title: series.title, coverImage: series.coverUrl, type: series.type, status: series.status } });
-    }
+    if (isBookmarked) removeBookmark.mutate({ provider: "asurascans", seriesId: safeSlug });
+    else addBookmark.mutate({ data: { provider: "asurascans", seriesId: safeSlug, title: series.title, coverImage: series.coverUrl, type: series.type, status: series.status } });
   }
 
   async function handleReact(reaction: string) {
@@ -210,7 +148,7 @@ export default function MangaFireSeriesDetailPage() {
     if (reacting) return;
     setReacting(true);
     try {
-      const r = await fetch(`${BASE}/api/reactions/atsu/${encodeURIComponent(safeSlug)}/${SERIES_CHAPTER}`, {
+      const r = await fetch(`${BASE}/api/reactions/asurascans/${encodeURIComponent(safeSlug)}/${SERIES_CHAPTER}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reaction }),
       });
       if (r.ok) setReactions(await r.json());
@@ -222,7 +160,7 @@ export default function MangaFireSeriesDetailPage() {
     try {
       const r = await fetch(`${BASE}/api/ratings`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: "atsu", seriesId: safeSlug, ratingValue: value }),
+        body: JSON.stringify({ provider: "asurascans", seriesId: safeSlug, ratingValue: value }),
       });
       if (r.ok) { setRating(await r.json()); toast({ description: "Rating saved!" }); }
     } catch { }
@@ -236,7 +174,7 @@ export default function MangaFireSeriesDetailPage() {
     try {
       const r = await fetch(`${BASE}/api/comments`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: "atsu", seriesId: safeSlug, chapterId: SERIES_CHAPTER, content: text }),
+        body: JSON.stringify({ provider: "asurascans", seriesId: safeSlug, chapterId: SERIES_CHAPTER, content: text }),
       });
       if (r.ok) { const nc = await r.json(); setComments((prev) => [nc, ...prev]); setCommentTotal((t) => t + 1); setCommentText(""); }
       else toast({ description: "Failed to post", variant: "destructive" });
@@ -256,12 +194,9 @@ export default function MangaFireSeriesDetailPage() {
       <div className="bg-[#07070d] min-h-screen">
         <Skeleton className="h-48 w-full bg-[#13131f]" />
         <div className="max-w-2xl mx-auto px-4 -mt-20 space-y-4">
-          <div className="flex justify-center">
-            <Skeleton className="w-28 rounded-xl bg-[#1a1a2e]" style={{ aspectRatio: "2/3" }} />
-          </div>
+          <div className="flex justify-center"><Skeleton className="w-28 rounded-xl bg-[#1a1a2e]" style={{ aspectRatio: "2/3" }} /></div>
           <Skeleton className="h-6 w-2/3 mx-auto bg-[#1a1a2e] rounded" />
           <Skeleton className="h-12 w-full bg-[#1a1a2e] rounded-xl" />
-          <Skeleton className="h-10 w-full bg-[#1a1a2e] rounded-xl" />
         </div>
       </div>
     );
@@ -271,7 +206,7 @@ export default function MangaFireSeriesDetailPage() {
     return (
       <div className="text-center py-20 text-white/40">
         <p>Series not found.</p>
-        <Button variant="ghost" onClick={() => navigate("/")} className="mt-4">Back to Home</Button>
+        <Button variant="ghost" onClick={() => navigate("/manhwa")} className="mt-4">Back to Manhwa</Button>
       </div>
     );
   }
@@ -281,14 +216,12 @@ export default function MangaFireSeriesDetailPage() {
     series.status === "Completed" ? "bg-blue-500/20 text-blue-300 border-blue-500/30" :
     "bg-orange-500/20 text-orange-300 border-orange-500/30";
 
-  const sortedChapters = [...chapters].sort((a, b) => sortNewest ? b.number - a.number : a.number - b.number);
+  const sortedChapters = [...series.chapters].sort((a, b) => sortNewest ? b.number - a.number : a.number - b.number);
   const filteredChapters = chapterSearch
     ? sortedChapters.filter((c) => String(c.number).includes(chapterSearch) || c.title.toLowerCase().includes(chapterSearch.toLowerCase()))
     : sortedChapters;
 
-  const firstCh = [...chapters].sort((a, b) => a.number - b.number)[0];
-  const totalChs = chapters.length || series.totalChapters;
-  const allAltTitles = series.altTitles.join(", ");
+  const firstCh = [...series.chapters].sort((a, b) => a.number - b.number)[0];
 
   return (
     <div className="bg-[#07070d] min-h-screen">
@@ -298,7 +231,7 @@ export default function MangaFireSeriesDetailPage() {
             style={{ filter: "blur(18px) brightness(0.35)" }} />
         )}
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#07070d]/30 to-[#07070d]" />
-        <button onClick={() => navigate("/")}
+        <button onClick={() => navigate("/manhwa")}
           className="absolute top-4 left-4 z-10 p-2 rounded-full bg-black/40 backdrop-blur-sm text-white/70 hover:text-white transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -317,21 +250,7 @@ export default function MangaFireSeriesDetailPage() {
       <div className="max-w-2xl mx-auto px-4">
         <div className="mt-3 text-center">
           <h1 className="text-lg font-black text-white leading-tight">{series.title}</h1>
-          {series.authors.length > 0 && (
-            <p className="text-xs text-white/35 mt-1">{series.authors.slice(0, 2).join(", ")}</p>
-          )}
-          {series.altTitles.length > 0 && (
-            <div className="mt-1">
-              <p className={`text-[11px] text-white/35 leading-relaxed ${altExpanded ? "" : "line-clamp-2"}`}>
-                {allAltTitles}
-              </p>
-              {allAltTitles.length > 60 && (
-                <button onClick={() => setAltExpanded(!altExpanded)} className="text-[10px] text-primary font-semibold mt-0.5">
-                  {altExpanded ? "Show less" : "Show more"}
-                </button>
-              )}
-            </div>
-          )}
+          {series.author && <p className="text-xs text-white/35 mt-1">{series.author}</p>}
         </div>
 
         <div className="flex items-center justify-center gap-6 mt-4">
@@ -343,7 +262,7 @@ export default function MangaFireSeriesDetailPage() {
           </div>
           <div className="w-px h-8 bg-white/[0.08]" />
           <div className="text-center">
-            <p className="text-xl font-black text-white">{totalChs || "—"}</p>
+            <p className="text-xl font-black text-white">{series.totalChapters || "—"}</p>
             <p className="text-[10px] text-white/35 mt-0.5 font-semibold">Chapters</p>
           </div>
           <div className="w-px h-8 bg-white/[0.08]" />
@@ -363,27 +282,22 @@ export default function MangaFireSeriesDetailPage() {
         <div className="mt-4">
           <Button onClick={toggleBookmark}
             className={`w-full h-11 font-bold text-sm gap-2 ${isBookmarked ? "bg-violet-600 hover:bg-violet-700" : "bg-primary hover:bg-primary/90"}`}>
-            <Bookmark className="w-4 h-4" />
-            {isBookmarked ? "Bookmarked" : "Add to Bookmarks"}
+            <Bookmark className="w-4 h-4" />{isBookmarked ? "Bookmarked" : "Add to Bookmarks"}
           </Button>
         </div>
 
-        <div className="mt-2">
-          <Button variant="outline"
-            className="w-full h-10 text-sm font-bold border-white/10 text-white/70 bg-transparent gap-2"
-            onClick={() => {
-              if (!chaptersLoaded && series.weebCentralId) loadChapters();
-              if (firstCh) navigate(`/read/${encodeURIComponent(firstCh.id)}?slug=${encodeURIComponent(safeSlug)}&wcId=${encodeURIComponent(series.weebCentralId ?? "")}`);
-            }}>
-            <BookOpen className="w-4 h-4" /> First Chapter
-          </Button>
-        </div>
+        {firstCh && (
+          <div className="mt-2">
+            <Button variant="outline" className="w-full h-10 text-sm font-bold border-white/10 text-white/70 bg-transparent gap-2"
+              onClick={() => navigate(`/manhwa/read/${encodeURIComponent(safeSlug)}/${firstCh.number}`)}>
+              <BookOpen className="w-4 h-4" /> First Chapter
+            </Button>
+          </div>
+        )}
 
         {series.description && (
           <div className="mt-5 border-t border-white/[0.06] pt-4">
-            <p className={`text-sm text-white/55 leading-relaxed ${descExpanded ? "" : "line-clamp-4"}`}>
-              {series.description}
-            </p>
+            <p className={`text-sm text-white/55 leading-relaxed ${descExpanded ? "" : "line-clamp-4"}`}>{series.description}</p>
             {series.description.length > 200 && (
               <button onClick={() => setDescExpanded(!descExpanded)} className="mt-1.5 text-xs text-primary flex items-center gap-1 font-semibold">
                 {descExpanded ? <><ChevronUp className="w-3 h-3" />Show less</> : <><ChevronDown className="w-3 h-3" />Show more</>}
@@ -394,9 +308,7 @@ export default function MangaFireSeriesDetailPage() {
 
         <div className="mt-6 border-t border-white/[0.06] pt-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-extrabold text-white">
-              {totalChs > 0 ? `${totalChs} Chapters` : "Chapters"}
-            </h2>
+            <h2 className="text-sm font-extrabold text-white">{series.totalChapters > 0 ? `${series.totalChapters} Chapters` : "Chapters"}</h2>
             <button onClick={() => setSortNewest(!sortNewest)}
               className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white px-2.5 py-1 rounded-lg border border-white/[0.08] hover:border-white/20 transition-all">
               {sortNewest ? <SortDesc className="w-3 h-3" /> : <SortAsc className="w-3 h-3" />}
@@ -411,67 +323,38 @@ export default function MangaFireSeriesDetailPage() {
               className="w-full bg-[#13131f] border border-white/[0.08] rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-white/25 focus:outline-none focus:border-primary/40" />
           </div>
 
-          {!chaptersLoaded && !chaptersLoading && (
-            <button onClick={loadChapters}
-              disabled={!series.weebCentralId}
-              className="w-full py-3 text-sm text-primary font-semibold border border-primary/30 rounded-lg hover:bg-primary/10 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-              {series.weebCentralId ? "Load Chapters" : "Chapters unavailable"}
-            </button>
-          )}
-
-          {chaptersLoading && (
-            <div className="space-y-px">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="flex items-center justify-between py-3 px-3">
-                  <Skeleton className="h-4 w-28 bg-[#13131f] rounded" />
-                  <Skeleton className="h-3 w-20 bg-[#13131f] rounded" />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {chaptersLoaded && (
-            <div className="overflow-y-auto rounded-xl border border-white/[0.06]" style={{ maxHeight: "400px" }}>
-              {filteredChapters.length === 0 ? (
-                <p className="text-center py-8 text-sm text-white/30">No chapters found</p>
-              ) : (
-                <div className="space-y-px">
-                  {filteredChapters.map((ch) => (
-                    <Link
-                      key={ch.id}
-                      href={`/read/${encodeURIComponent(ch.id)}?slug=${encodeURIComponent(safeSlug)}&wcId=${encodeURIComponent(series.weebCentralId ?? "")}`}
-                      className="group flex items-center justify-between py-3 px-4 hover:bg-white/[0.04] transition-colors border-b border-white/[0.04] last:border-0"
-                    >
-                      <p className="text-sm font-bold text-white/80 group-hover:text-primary transition-colors">
-                        Chapter {ch.number}
-                      </p>
-                      {ch.releaseDate && (
-                        <span className="text-xs text-white/30 shrink-0 ml-3">{timeAgo(ch.releaseDate)}</span>
-                      )}
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          <div className="overflow-y-auto rounded-xl border border-white/[0.06]" style={{ maxHeight: "400px" }}>
+            {filteredChapters.length === 0 ? (
+              <p className="text-center py-8 text-sm text-white/30">No chapters found</p>
+            ) : (
+              <div className="space-y-px">
+                {filteredChapters.map((ch) => (
+                  <Link key={ch.id} href={`/manhwa/read/${encodeURIComponent(safeSlug)}/${ch.number}`}
+                    className="group flex items-center justify-between py-3 px-4 hover:bg-white/[0.04] transition-colors border-b border-white/[0.04] last:border-0">
+                    <p className="text-sm font-bold text-white/80 group-hover:text-primary transition-colors">
+                      Chapter {ch.number}{ch.title ? ` - ${ch.title}` : ""}
+                    </p>
+                    {ch.releaseDate && (
+                      <span className="text-xs text-white/30 shrink-0 ml-3">
+                        {new Date(ch.releaseDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </span>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="mt-6 border-t border-white/[0.06] pt-5 pb-4">
-          <p className="text-sm font-extrabold text-white mb-1">What did you think of this series?</p>
-          {reactions && (
-            <p className="text-xs text-white/30 mb-4">
-              {Object.entries(reactions).filter(([k]) => k !== "userReaction").reduce((a, [, b]) => typeof b === "number" ? a + b : a, 0)} reactions
-            </p>
-          )}
+          <p className="text-sm font-extrabold text-white mb-4">Reactions</p>
           <div className="grid grid-cols-3 gap-2">
             {REACTIONS.map(({ key, emoji, label }) => {
               const count = ((reactions as unknown) as Record<string, unknown>)?.[key] as number ?? 0;
               const isActive = reactions?.userReaction === key;
               return (
                 <button key={key} onClick={() => handleReact(key)} disabled={reacting}
-                  className={`flex flex-col items-center gap-1 py-2.5 rounded-xl border text-xs transition-all select-none ${
-                    isActive ? "bg-primary/20 border-primary/50 text-white scale-105" : "bg-white/[0.03] border-white/[0.08] text-white/50 hover:bg-white/[0.07]"
-                  }`}>
+                  className={`flex flex-col items-center gap-1 py-2.5 rounded-xl border text-xs transition-all select-none ${isActive ? "bg-primary/20 border-primary/50 text-white scale-105" : "bg-white/[0.03] border-white/[0.08] text-white/50 hover:bg-white/[0.07]"}`}>
                   <span className="text-xl leading-none">{emoji}</span>
                   {count > 0 && <span className="text-xs font-bold text-white/70">{count}</span>}
                   <span className="text-[10px] text-white/35">{label}</span>
@@ -492,7 +375,6 @@ export default function MangaFireSeriesDetailPage() {
           <h2 className="text-base font-extrabold text-white mb-4">
             Comments {commentTotal > 0 && <span className="text-white/30 font-normal text-sm ml-1">({commentTotal})</span>}
           </h2>
-
           {user ? (
             <form onSubmit={handlePostComment} className="mb-5">
               <div className="flex items-start gap-3">
@@ -509,16 +391,12 @@ export default function MangaFireSeriesDetailPage() {
               <Link href="/login" className="text-primary hover:underline">Login</Link> to comment
             </div>
           )}
-
           {loadingComments ? (
             <div className="space-y-3">
               {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="flex gap-3">
                   <Skeleton className="w-8 h-8 rounded-full bg-[#1a1a2e] shrink-0" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-3 w-24 bg-[#1a1a2e] rounded" />
-                    <Skeleton className="h-10 w-full bg-[#1a1a2e] rounded" />
-                  </div>
+                  <div className="flex-1 space-y-2"><Skeleton className="h-3 w-24 bg-[#1a1a2e] rounded" /><Skeleton className="h-10 w-full bg-[#1a1a2e] rounded" /></div>
                 </div>
               ))}
             </div>
@@ -529,11 +407,7 @@ export default function MangaFireSeriesDetailPage() {
               {comments.map((c) => (
                 <div key={c.id} className="flex gap-3">
                   <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                    {c.avatarUrl ? (
-                      <img src={c.avatarUrl} alt="" className="w-full h-full object-cover rounded-full" />
-                    ) : (
-                      <span className="text-primary text-xs font-bold">{c.username[0]?.toUpperCase()}</span>
-                    )}
+                    {c.avatarUrl ? <img src={c.avatarUrl} alt="" className="w-full h-full object-cover rounded-full" /> : <span className="text-primary text-xs font-bold">{c.username[0]?.toUpperCase()}</span>}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
@@ -541,9 +415,7 @@ export default function MangaFireSeriesDetailPage() {
                       <div className="flex items-center gap-1.5">
                         <span className="text-[10px] text-white/25">{commentTimeAgo(c.createdAt)}</span>
                         {user && c.userId === (user as { id: number }).id && (
-                          <button onClick={() => handleDeleteComment(c.id)} className="text-white/20 hover:text-destructive transition-colors">
-                            <Trash2 className="w-3 h-3" />
-                          </button>
+                          <button onClick={() => handleDeleteComment(c.id)} className="text-white/20 hover:text-destructive transition-colors"><Trash2 className="w-3 h-3" /></button>
                         )}
                       </div>
                     </div>

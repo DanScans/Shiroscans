@@ -985,6 +985,15 @@ const PROXY_ALLOWED_HOSTS = new Set([
   "s.mfcdn.nl",
   "static.mfcdn.nl",
   "img.mfcdn.nl",
+  // Atsumaru / atsu.moe (manga covers and static images)
+  "atsu.moe",
+  // WeebCentral cover CDN (compsci88.com)
+  "temp.compsci88.com",
+  "compsci88.com",
+  // MangaBaka CDN
+  "cdn.mangabaka.dev",
+  "images.mangabaka.dev",
+  "api.mangabaka.org",
 ]);
 
 // GET /proxy-image?url=<encoded-url>  — server-side image proxy so covers always load regardless of CORS/referer restrictions

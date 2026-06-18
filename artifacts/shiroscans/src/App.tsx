@@ -17,6 +17,10 @@ import SettingsPage from "@/pages/Settings";
 import LoginPage from "@/pages/Login";
 import RegisterPage from "@/pages/Register";
 import NotFound from "@/pages/not-found";
+import ManhwaHomePage from "@/pages/ManhwaHome";
+import ManhwaSeriesDetailPage from "@/pages/ManhwaSeriesDetail";
+import ManhwaReaderPage from "@/pages/ManhwaReader";
+import ManhwaBrowsePage from "@/pages/ManhwaBrowse";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,6 +43,9 @@ function LayoutedRoutes() {
         <Route path="/series/:slug" component={MangaFireSeriesDetailPage} />
         <Route path="/browse" component={BrowsePage} />
         <Route path="/search" component={SearchPage} />
+        <Route path="/manhwa" component={ManhwaHomePage} />
+        <Route path="/manhwa/browse" component={ManhwaBrowsePage} />
+        <Route path="/manhwa/series/:slug" component={ManhwaSeriesDetailPage} />
         <Route path="/bookmarks" component={BookmarksPage} />
         <Route path="/history" component={HistoryPage} />
         <Route path="/favourites" component={FavouritesPage} />
@@ -59,6 +66,7 @@ function App() {
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Switch>
             <Route path="/read/:chapterId" component={MangaFireReaderPage} />
+            <Route path="/manhwa/read/:slug/:chapterNum" component={ManhwaReaderPage} />
             <Route component={LayoutedRoutes} />
           </Switch>
         </WouterRouter>

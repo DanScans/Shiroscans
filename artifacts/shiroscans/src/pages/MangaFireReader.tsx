@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useParams, useSearch } from "wouter";
-import { ArrowLeft, ChevronLeft, ChevronRight, List, ExternalLink } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, List } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -31,6 +31,7 @@ export default function MangaFireReaderPage() {
   const search = useSearch();
   const params = new URLSearchParams(search);
   const slug = params.get("slug") ?? "";
+  const wcId = params.get("wcId") ?? "";
 
   const [chapterData, setChapterData] = useState<ChapterData | null>(null);
   const [allChapters, setAllChapters] = useState<Chapter[]>([]);
@@ -42,12 +43,13 @@ export default function MangaFireReaderPage() {
 
   const safeChapterId = chapterId ? decodeURIComponent(chapterId) : "";
   const safeSlug = slug ? decodeURIComponent(slug) : "";
+  const safeWcId = wcId ? decodeURIComponent(wcId) : "";
 
   useEffect(() => {
     if (!safeChapterId) return;
     setLoading(true);
     setLoadedImages(new Set());
-    fetch(`${BASE}/api/mangafire/read/${encodeURIComponent(safeChapterId)}`)
+    fetch(`${BASE}/api/atsu/read/${encodeURIComponent(safeChapterId)}`)
       .then((r) => r.ok ? r.json() : Promise.reject(r))
       .then((d: ChapterData) => setChapterData(d))
       .catch(() => toast({ description: "Failed to load chapter", variant: "destructive" }))
@@ -55,12 +57,12 @@ export default function MangaFireReaderPage() {
   }, [safeChapterId]);
 
   useEffect(() => {
-    if (!safeSlug) return;
-    fetch(`${BASE}/api/mangafire/chapters-by-slug/${encodeURIComponent(safeSlug)}`)
+    if (!safeWcId) return;
+    fetch(`${BASE}/api/atsu/chapters/${encodeURIComponent(safeWcId)}`)
       .then((r) => r.ok ? r.json() : null)
       .then((d) => { if (d?.chapters) setAllChapters(d.chapters); })
       .catch(() => {});
-  }, [safeSlug]);
+  }, [safeWcId]);
 
   useEffect(() => {
     const handleClick = () => {
@@ -85,7 +87,6 @@ export default function MangaFireReaderPage() {
 
   const barCls = `transition-all duration-300 ${showUI ? "opacity-100" : "opacity-0 pointer-events-none"}`;
 
-  // Derive series title from slug
   const seriesTitle = safeSlug
     ? safeSlug.replace(/\.[^.]+$/, "").replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
     : "Reading";
@@ -93,9 +94,12 @@ export default function MangaFireReaderPage() {
   const hasPages = (chapterData?.pages?.length ?? 0) > 0;
   const embedUrl = chapterData?.embedUrl ?? "";
 
+  function chapterHref(ch: Chapter): string {
+    return `/read/${encodeURIComponent(ch.id)}?slug=${encodeURIComponent(safeSlug)}&wcId=${encodeURIComponent(safeWcId)}`;
+  }
+
   return (
     <div className="bg-[#07070d] min-h-[100dvh] relative">
-      {/* Top Bar */}
       <div className={`fixed top-0 left-0 right-0 z-50 bg-[#0A0A0F]/97 backdrop-blur-md border-b border-white/[0.06] flex items-center h-12 px-3 gap-2 ${barCls}`}>
         <Link
           href={safeSlug ? `/series/${encodeURIComponent(safeSlug)}` : "/"}
@@ -107,24 +111,11 @@ export default function MangaFireReaderPage() {
         <div className="flex-1 min-w-0 text-center">
           <p className="text-xs text-white/80 font-semibold truncate leading-tight">{seriesTitle}</p>
           <p className="text-[11px] text-primary leading-tight">
-            {currentChapter ? `Chapter ${currentChapter.number}` : safeChapterId.split("/").pop()?.replace("chapter-", "Ch. ") ?? ""}
+            {currentChapter ? `Chapter ${currentChapter.number}` : ""}
           </p>
         </div>
-        {embedUrl && (
-          <a
-            href={embedUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-1.5 rounded-md hover:bg-white/8 text-white/50 hover:text-white transition-colors shrink-0"
-            onClick={(e) => e.stopPropagation()}
-            title="Open on MangaFire"
-          >
-            <ExternalLink className="w-4 h-4" />
-          </a>
-        )}
       </div>
 
-      {/* Main content */}
       <div className="pt-12 pb-20" onClick={() => { setShowUI((v) => !v); clearTimeout(hideTimer.current); }}>
         {loading ? (
           <div className="flex flex-col items-center gap-0.5">
@@ -133,7 +124,6 @@ export default function MangaFireReaderPage() {
             ))}
           </div>
         ) : hasPages ? (
-          /* ── Image mode: pages loaded server-side ─────────────── */
           <div className="max-w-3xl mx-auto space-y-0.5">
             {chapterData!.pages.map((url, i) => (
               <div key={i} className="w-full relative">
@@ -152,32 +142,25 @@ export default function MangaFireReaderPage() {
             ))}
           </div>
         ) : embedUrl ? (
-          /* ── Iframe mode: embed MangaFire reader directly ─────── */
           <div className="fixed inset-0 pt-12 pb-[56px]">
             <iframe
               src={embedUrl}
               className="w-full h-full border-0"
-              title="MangaFire Reader"
+              title="Chapter Reader"
               allow="fullscreen"
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             />
           </div>
         ) : (
-          /* ── Fallback ──────────────────────────────────────────── */
           <div className="text-center py-24 px-4">
             <p className="text-white/40 mb-4">Could not load chapter pages.</p>
-            <Link
-              href={safeSlug ? `/series/${encodeURIComponent(safeSlug)}` : "/"}
-              className="text-primary text-sm inline-block"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <Link href={safeSlug ? `/series/${encodeURIComponent(safeSlug)}` : "/"} className="text-primary text-sm inline-block" onClick={(e) => e.stopPropagation()}>
               ← Back to series
             </Link>
           </div>
         )}
       </div>
 
-      {/* Bottom Bar — hidden in iframe mode to let MangaFire's own UI control navigation */}
       {!(!hasPages && embedUrl) && (
         <div
           className={`fixed bottom-0 left-0 right-0 z-50 bg-[#0A0A0F]/97 backdrop-blur-md border-t border-white/[0.06] ${barCls}`}
@@ -187,10 +170,8 @@ export default function MangaFireReaderPage() {
           <div className="max-w-3xl mx-auto flex items-center h-14 px-3 gap-2">
             <div className="flex-1">
               {prevChapter ? (
-                <Link
-                  href={`/read/${encodeURIComponent(prevChapter.id)}?slug=${encodeURIComponent(safeSlug)}`}
-                  className="flex items-center justify-center gap-1 w-full py-2 rounded-lg bg-primary/10 border border-primary/30 text-primary text-sm font-bold hover:bg-primary hover:text-white transition-all"
-                >
+                <Link href={chapterHref(prevChapter)}
+                  className="flex items-center justify-center gap-1 w-full py-2 rounded-lg bg-primary/10 border border-primary/30 text-primary text-sm font-bold hover:bg-primary hover:text-white transition-all">
                   <ChevronLeft className="w-4 h-4" /> Prev
                 </Link>
               ) : (
@@ -203,23 +184,15 @@ export default function MangaFireReaderPage() {
             <div className="flex-[1.8]">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
-                    className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white/60 text-sm font-medium hover:bg-white/10 transition-all"
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                  <button className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white/60 text-sm font-medium hover:bg-white/10 transition-all" onClick={(e) => e.stopPropagation()}>
                     <List className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate text-sm">
-                      {currentChapter ? `Ch. ${currentChapter.number}` : "Chapters"}
-                    </span>
+                    <span className="truncate text-sm">{currentChapter ? `Ch. ${currentChapter.number}` : "Chapters"}</span>
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="center" className="w-56 max-h-64 overflow-y-auto bg-card border-white/10" onClick={(e) => e.stopPropagation()}>
                   {sortedChapters.map((ch) => (
                     <DropdownMenuItem key={ch.id} asChild>
-                      <Link
-                        href={`/read/${encodeURIComponent(ch.id)}?slug=${encodeURIComponent(safeSlug)}`}
-                        className={`w-full cursor-pointer ${ch.id === safeChapterId ? "text-primary font-bold" : ""}`}
-                      >
+                      <Link href={chapterHref(ch)} className={`w-full cursor-pointer ${ch.id === safeChapterId ? "text-primary font-bold" : ""}`}>
                         Chapter {ch.number}
                       </Link>
                     </DropdownMenuItem>
@@ -230,10 +203,8 @@ export default function MangaFireReaderPage() {
 
             <div className="flex-1">
               {nextChapter ? (
-                <Link
-                  href={`/read/${encodeURIComponent(nextChapter.id)}?slug=${encodeURIComponent(safeSlug)}`}
-                  className="flex items-center justify-center gap-1 w-full py-2 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-all shadow-md shadow-primary/20"
-                >
+                <Link href={chapterHref(nextChapter)}
+                  className="flex items-center justify-center gap-1 w-full py-2 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-all shadow-md shadow-primary/20">
                   Next <ChevronRight className="w-4 h-4" />
                 </Link>
               ) : (
@@ -246,7 +217,6 @@ export default function MangaFireReaderPage() {
         </div>
       )}
 
-      {/* Iframe mode navigation overlay at the bottom */}
       {!hasPages && embedUrl && (
         <div
           className={`fixed bottom-0 left-0 right-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-md border-t border-white/[0.06] ${barCls}`}
@@ -256,10 +226,7 @@ export default function MangaFireReaderPage() {
           <div className="max-w-3xl mx-auto flex items-center h-14 px-3 gap-2">
             <div className="flex-1">
               {prevChapter ? (
-                <Link
-                  href={`/read/${encodeURIComponent(prevChapter.id)}?slug=${encodeURIComponent(safeSlug)}`}
-                  className="flex items-center justify-center gap-1 w-full py-2 rounded-lg bg-primary/10 border border-primary/30 text-primary text-sm font-bold hover:bg-primary hover:text-white transition-all"
-                >
+                <Link href={chapterHref(prevChapter)} className="flex items-center justify-center gap-1 w-full py-2 rounded-lg bg-primary/10 border border-primary/30 text-primary text-sm font-bold hover:bg-primary hover:text-white transition-all">
                   <ChevronLeft className="w-4 h-4" /> Prev
                 </Link>
               ) : (
@@ -269,23 +236,27 @@ export default function MangaFireReaderPage() {
               )}
             </div>
             <div className="flex-[1.8]">
-              <a
-                href={embedUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white/60 text-sm font-medium hover:bg-white/10 transition-all"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate text-sm">Open Full Reader</span>
-              </a>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white/60 text-sm font-medium hover:bg-white/10 transition-all" onClick={(e) => e.stopPropagation()}>
+                    <List className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate text-sm">{currentChapter ? `Ch. ${currentChapter.number}` : "Chapters"}</span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center" className="w-56 max-h-64 overflow-y-auto bg-card border-white/10" onClick={(e) => e.stopPropagation()}>
+                  {sortedChapters.map((ch) => (
+                    <DropdownMenuItem key={ch.id} asChild>
+                      <Link href={chapterHref(ch)} className={`w-full cursor-pointer ${ch.id === safeChapterId ? "text-primary font-bold" : ""}`}>
+                        Chapter {ch.number}
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
             <div className="flex-1">
               {nextChapter ? (
-                <Link
-                  href={`/read/${encodeURIComponent(nextChapter.id)}?slug=${encodeURIComponent(safeSlug)}`}
-                  className="flex items-center justify-center gap-1 w-full py-2 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-all shadow-md shadow-primary/20"
-                >
+                <Link href={chapterHref(nextChapter)} className="flex items-center justify-center gap-1 w-full py-2 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-all shadow-md shadow-primary/20">
                   Next <ChevronRight className="w-4 h-4" />
                 </Link>
               ) : (
