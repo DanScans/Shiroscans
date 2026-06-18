@@ -2,3 +2,4 @@
 - [AsuraScans image proxy](asura-proxy.md) — chapter images and covers served via `/api/proxy-image?url=...`; CDN domains in allowlist in manga.ts
 - [MangaPlus API blocked](mangaplus-blocked.md) — MangaPlus jumpg-webapi.tokyo-cdn.com returns FailureResult "Account Banned" from Replit IPs; use MangaDex instead
 - [MangaDex image loading](mangadex-images.md) — MangaDex CDN (uploads.mangadex.org) blocks server-side proxy requests (returns 400); load covers directly in browser; only proxy chapter at-home-server pages through backend
+- [MangaFire scraper](mangafire-scraper.md) — working selectors, CDN proxy fix, reader embed fallback, Cloudflare keyword-search block

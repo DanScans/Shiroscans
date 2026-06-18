@@ -980,6 +980,11 @@ const PROXY_ALLOWED_HOSTS = new Set([
   "i1.wp.com",
   "i2.wp.com",
   "i3.wp.com",
+  // MangaFire CDN
+  "mfcdn.nl",
+  "s.mfcdn.nl",
+  "static.mfcdn.nl",
+  "img.mfcdn.nl",
 ]);
 
 // GET /proxy-image?url=<encoded-url>  — server-side image proxy so covers always load regardless of CORS/referer restrictions
@@ -1014,6 +1019,7 @@ router.get("/proxy-image", async (req, res): Promise<void> => {
     if (PROXY_ALLOWED_HOSTS.has(h)) return true;
     if (h === "mangadex.org" || h.endsWith(".mangadex.org")) return true;
     if (h.endsWith(".mangadex.network")) return true;
+    if (h === "mfcdn.nl" || h.endsWith(".mfcdn.nl")) return true;
     return false;
   }
   if (!isAllowedProxyHost(parsed.hostname)) {

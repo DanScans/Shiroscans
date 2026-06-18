@@ -293,8 +293,9 @@ function Pagination({ page, totalPages, onPage }: { page: number; totalPages: nu
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function HomePage() {
-  const [homeData, setHomeData] = useState<{ featured: MFItem[]; trending: MFItem[]; latest: MFItem[]; latestRaw: MFItem[] } | null>(null);
+  const [homeData, setHomeData] = useState<{ featured: MFItem[]; latest: MFItem[] } | null>(null);
   const [homeLoading, setHomeLoading] = useState(true);
+  const [trending, setTrending] = useState<MFItem[]>([]);
 
   const [popularPeriod, setPopularPeriod] = useState<"weekly" | "monthly" | "alltime">("weekly");
   const [popularData, setPopularData] = useState<Record<string, MFItem[]>>({});
@@ -305,9 +306,15 @@ export default function HomePage() {
   const [latestPageLoading, setLatestPageLoading] = useState(false);
 
   useEffect(() => {
-    fetch(`${BASE}/api/mangafire/home`)
-      .then((r) => r.ok ? r.json() : Promise.reject(r))
-      .then((d) => setHomeData(d))
+    // Fetch home (featured carousel + latest) and trending-today in parallel
+    Promise.all([
+      fetch(`${BASE}/api/mangafire/home`).then((r) => r.ok ? r.json() : Promise.reject(r)),
+      fetch(`${BASE}/api/mangafire/trending-today`).then((r) => r.ok ? r.json() : null),
+    ])
+      .then(([home, trendData]) => {
+        setHomeData(home);
+        if (trendData?.items) setTrending(trendData.items);
+      })
       .catch(() => {})
       .finally(() => setHomeLoading(false));
   }, []);
@@ -333,7 +340,6 @@ export default function HomePage() {
   }, [latestPage]);
 
   const featured = homeData?.featured ?? [];
-  const trending = homeData?.trending ?? [];
   const latestFromHome = homeData?.latest ?? [];
   const currentLatest = latestPageData[latestPage]?.items ?? [];
   const totalLatestPages = latestPageData[latestPage]?.totalPages ?? 5;

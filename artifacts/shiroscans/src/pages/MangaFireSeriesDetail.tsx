@@ -161,12 +161,12 @@ export default function MangaFireSeriesDetailPage() {
 
   useEffect(() => {
     if (!safeSlug) return;
-    fetch(`${BASE}/api/reactions/asurascans/${encodeURIComponent(safeSlug)}/${SERIES_CHAPTER}`)
+    fetch(`${BASE}/api/reactions/mangafire/${encodeURIComponent(safeSlug)}/${SERIES_CHAPTER}`)
       .then((r) => r.ok ? r.json() : null).then((d) => d && setReactions(d)).catch(() => {});
-    fetch(`${BASE}/api/ratings/asurascans/${encodeURIComponent(safeSlug)}`)
+    fetch(`${BASE}/api/ratings/mangafire/${encodeURIComponent(safeSlug)}`)
       .then((r) => r.ok ? r.json() : null).then((d) => d && setRating(d)).catch(() => {});
     setLoadingComments(true);
-    fetch(`${BASE}/api/comments/asurascans/${encodeURIComponent(safeSlug)}/${SERIES_CHAPTER}?limit=10&sortBy=newest`)
+    fetch(`${BASE}/api/comments/mangafire/${encodeURIComponent(safeSlug)}/${SERIES_CHAPTER}?limit=10&sortBy=newest`)
       .then((r) => r.ok ? r.json() : null)
       .then((d) => { if (d) { setComments(d.comments ?? []); setCommentTotal(d.total ?? 0); } })
       .catch(() => {}).finally(() => setLoadingComments(false));
@@ -207,7 +207,7 @@ export default function MangaFireSeriesDetailPage() {
     if (reacting) return;
     setReacting(true);
     try {
-      const r = await fetch(`${BASE}/api/reactions/asurascans/${encodeURIComponent(safeSlug)}/${SERIES_CHAPTER}`, {
+      const r = await fetch(`${BASE}/api/reactions/mangafire/${encodeURIComponent(safeSlug)}/${SERIES_CHAPTER}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reaction }),
       });
       if (r.ok) setReactions(await r.json());

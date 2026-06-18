@@ -3,6 +3,7 @@ import * as cheerio from "cheerio";
 
 const router: IRouter = Router();
 
+// ─── In-memory cache ──────────────────────────────────────────────────────────
 const _cache = new Map<string, { data: unknown; expiresAt: number }>();
 function withCache<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
   const hit = _cache.get(key);
@@ -13,6 +14,7 @@ function withCache<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise
   });
 }
 
+// ─── HTTP helpers ─────────────────────────────────────────────────────────────
 const MF_BASE = "https://mangafire.to";
 const MF_HEADERS: Record<string, string> = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -30,49 +32,13 @@ async function mfFetch(path: string, ajax = false): Promise<string> {
   const url = path.startsWith("http") ? path : `${MF_BASE}${path}`;
   const res = await fetch(url, {
     headers: ajax ? MF_AJAX_HEADERS : MF_HEADERS,
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(25000),
   });
-  if (!res.ok) throw new Error(`MangaFire ${path} returned ${res.status}`);
+  if (!res.ok) throw new Error(`MangaFire ${path} → ${res.status}`);
   return res.text();
 }
 
-async function mfFetchJson<T = unknown>(path: string): Promise<T> {
-  const url = path.startsWith("http") ? path : `${MF_BASE}${path}`;
-  const res = await fetch(url, {
-    headers: MF_AJAX_HEADERS,
-    signal: AbortSignal.timeout(20000),
-  });
-  if (!res.ok) throw new Error(`MangaFire JSON ${path} returned ${res.status}`);
-  return res.json() as Promise<T>;
-}
-
-function extractMangaId(href: string): string {
-  const m = href.match(/\/manga\/([^/?#]+)/);
-  return m ? m[1]! : href;
-}
-
-function extractIdSuffix(slug: string): string {
-  const m = slug.match(/\.([a-z0-9]+)$/i);
-  return m ? m[1]! : slug;
-}
-
-function parseRating(text: string): number | null {
-  const n = parseFloat(text.replace(/[^0-9.]/g, ""));
-  return isNaN(n) ? null : n;
-}
-
-function starsFromRating(r: number | null): string {
-  if (r === null) return "";
-  if (r >= 9.5) return "⭐⭐⭐⭐⭐";
-  if (r >= 9.0) return "⭐⭐⭐⭐½";
-  if (r >= 8.5) return "⭐⭐⭐⭐";
-  if (r >= 8.0) return "⭐⭐⭐½";
-  if (r >= 7.5) return "⭐⭐⭐";
-  if (r >= 7.0) return "⭐⭐½";
-  if (r >= 6.0) return "⭐⭐";
-  return "⭐";
-}
-
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface MFManga {
   id: string;
   slug: string;
@@ -84,127 +50,131 @@ interface MFManga {
   latestChapter: string | null;
   genres: string[];
   updatedAt: string | null;
+  chapters?: Array<{ label: string; id: string; timeAgo: string }>;
 }
 
+// ─── parseMangaCard — uses real MangaFire HTML structure ──────────────────────
+// Actual card HTML:
+//   <div class="unit item-{numericId}">
+//     <a href="/manga/{slug}" class="poster"><div><img src="..." alt="Title"></div></a>
+//     <div class="info">
+//       <div><span class="type">Manhwa</span></div>
+//       <a href="/manga/{slug}">Title</a>
+//       <ul class="content" data-name="chap">
+//         <li><a href="/read/{slug}/en/chapter-329"><span>Chap 329 <b>EN</b></span><span>2 hours ago</span></a></li>
+//       </ul>
+//     </div>
+//   </div>
 function parseMangaCard($: cheerio.CheerioAPI, el: cheerio.Element): MFManga | null {
   try {
     const $el = $(el);
-    const linkEl = $el.find("a").first();
-    const href = linkEl.attr("href") ?? $el.attr("href") ?? "";
-    const slug = extractMangaId(href);
+
+    // Numeric ID from class "unit item-{id}"
+    const classAttr = $el.attr("class") ?? "";
+    const idFromClass = classAttr.match(/\bitem-(\d+)\b/)?.[1] ?? "";
+
+    // Slug from poster anchor href
+    const posterHref =
+      $el.find("a.poster").attr("href") ??
+      $el.find("a[href*='/manga/']").first().attr("href") ?? "";
+    const slugMatch = posterHref.match(/\/manga\/([^/?#\s]+)/);
+    const slug = slugMatch?.[1] ?? "";
     if (!slug) return null;
 
+    // Cover image
+    const coverUrl =
+      $el.find("a.poster img").attr("src") ??
+      $el.find("img").first().attr("src") ??
+      $el.find("img").first().attr("data-src") ?? "";
+
+    // Title from info section link text, fallback to img alt
     const title =
-      $el.find(".title, h3, h2, .name, [class*='title']").first().text().trim() ||
-      $el.find("a").attr("title") ||
-      $el.find("img").attr("alt") ||
-      "";
+      $el.find(".info a[href*='/manga/']").first().text().trim() ||
+      ($el.find("img").first().attr("alt") ?? "");
     if (!title) return null;
 
-    const coverUrl =
-      $el.find("img").attr("src") ||
-      $el.find("img").attr("data-src") ||
-      $el.find("img").attr("data-lazy-src") ||
-      "";
-
-    const ratingText = $el.find(".rating, .score, [class*='rating'], [class*='score']").first().text().trim();
-    const rating = parseRating(ratingText);
-
-    const chapterEl = $el.find(".chapter, [class*='chapter'], .lastest-chapter").first();
-    const latestChapter = chapterEl.text().trim() || null;
-
-    const typeText = $el.find(".type, [class*='type'], .badge-type").first().text().trim().toLowerCase();
+    // Type — actual text "Manga" | "Manhwa" | "Manhua"
+    const typeRaw = $el.find(".type").first().text().trim();
     let type = "Manga";
-    if (typeText.includes("manhwa") || typeText.includes("korean")) type = "Manhwa";
-    else if (typeText.includes("manhua") || typeText.includes("chinese")) type = "Manhua";
+    if (typeRaw) {
+      const tl = typeRaw.toLowerCase();
+      if (tl.includes("manhwa")) type = "Manhwa";
+      else if (tl.includes("manhua")) type = "Manhua";
+      else type = typeRaw;
+    }
 
-    const statusText = $el.find(".status, [class*='status']").first().text().trim();
+    // Latest chapter from first chap-list entry
+    const firstLi = $el.find("ul.content[data-name='chap'] li").first();
+    const firstLink = firstLi.find("a");
+    const spans = firstLink.find("span");
+    // "Chap 329 EN" — strip inner <b> text noise
+    const rawChap = spans.first().clone().find("b").remove().end().text().trim();
+    const latestChapter = rawChap || spans.first().text().trim() || null;
+    const updatedAt = spans.eq(1).text().trim() || null;
 
-    return { id: extractIdSuffix(slug), slug, title, coverUrl, type, status: statusText || null, rating, latestChapter, genres: [], updatedAt: null };
+    // Chapter read URL → becomes our chapterId
+    const chapterHref = firstLink.attr("href") ?? "";
+    const chapters: Array<{ label: string; id: string; timeAgo: string }> = [];
+    $el.find("ul.content[data-name='chap'] li").each((i, li) => {
+      if (i >= 3) return;
+      const a = $(li).find("a");
+      const href = a.attr("href") ?? "";
+      const chIdMatch = href.match(/^\/read\/(.+)/);
+      const chId = chIdMatch?.[1] ?? href;
+      const sp = a.find("span");
+      const label = sp.first().text().trim().replace(/\s+/g, " ");
+      const timeAgo = sp.eq(1).text().trim();
+      if (chId) chapters.push({ label, id: chId, timeAgo });
+    });
+
+    // ID: prefer numeric class id, fallback to suffix of slug
+    const id = idFromClass || (slug.match(/\.([a-z0-9]+)$/i)?.[1] ?? slug);
+
+    return {
+      id, slug, title, coverUrl, type,
+      status: null, rating: null,
+      latestChapter: latestChapter ?? (chapters[0]?.label ?? null),
+      genres: [], updatedAt,
+      chapters: chapters.length ? chapters : undefined,
+    };
   } catch { return null; }
 }
 
-// ─── GET /api/mangafire/home ──────────────────────────────────────────────────
+// ─── GET /api/mangafire/home ───────────────────────────────────────────────────
+// Uses /filter pages (more reliable than /home which can time-out or be JS-rendered)
 router.get("/mangafire/home", async (req, res): Promise<void> => {
   try {
     const data = await withCache("mf:home", 5 * 60_000, async () => {
-      const html = await mfFetch("/home");
-      const $ = cheerio.load(html);
+      // Fetch trending for featured + recently updated for latest in parallel
+      const [trendHtml, latestHtml] = await Promise.all([
+        mfFetch("/filter?sort=trending&page=1"),
+        mfFetch("/filter?sort=recently_updated&page=1"),
+      ]);
+
+      const $t = cheerio.load(trendHtml);
+      const $l = cheerio.load(latestHtml);
 
       const featured: MFManga[] = [];
-      const trending: MFManga[] = [];
       const latest: MFManga[] = [];
 
-      // Extract from swiper/slider sections (featured carousel)
-      $(".swiper-slide, [class*='slider'] .unit, [class*='featured'] .unit, [class*='carousel'] .unit").each((_, el) => {
-        const item = parseMangaCard($, el);
+      $t(".unit").each((_, el) => {
+        const item = parseMangaCard($t, el);
         if (item && featured.length < 20) featured.push(item);
       });
 
-      // Extract trending / popular today section
-      $("[class*='trend'] .unit, [class*='popular'] .unit, [class*='trending'] .unit, .trending .unit").each((_, el) => {
-        const item = parseMangaCard($, el);
-        if (item && trending.length < 10) trending.push(item);
-      });
-
-      // If trending is empty try a broader selector
-      if (trending.length === 0) {
-        $(".section:first-of-type .unit, .units .unit").each((_, el) => {
-          const item = parseMangaCard($, el);
-          if (item && trending.length < 10) trending.push(item);
-        });
-      }
-
-      // Extract latest updates section
-      $("[class*='latest'] .unit, [class*='update'] .unit, [class*='recent'] .unit").each((_, el) => {
-        const item = parseMangaCard($, el);
+      $l(".unit").each((_, el) => {
+        const item = parseMangaCard($l, el);
         if (item) latest.push(item);
       });
 
-      // Parse chapter updates with time info from list items
-      const latestWithTime: Array<MFManga & { chapters: Array<{ label: string; id: string; timeAgo: string }> }> = [];
-      $("[class*='latest'] .item, [class*='update'] li, [class*='recent'] li, .manga-item").each((_, el) => {
-        const $el = $(el);
-        const href = $el.find("a").first().attr("href") ?? "";
-        const slug = extractMangaId(href);
-        if (!slug) return;
-        const title = $el.find(".title, .name, h3, h2").first().text().trim() || $el.find("a").attr("title") || "";
-        if (!title) return;
-        const coverUrl = $el.find("img").attr("src") || $el.find("img").attr("data-src") || "";
-        const chapters: Array<{ label: string; id: string; timeAgo: string }> = [];
-        $el.find("a[href*='chapter'], [class*='chapter'] a").each((i, cel) => {
-          if (i >= 3) return;
-          const chHref = $(cel).attr("href") ?? "";
-          const chId = chHref.split("/").pop() ?? "";
-          const label = $(cel).text().trim();
-          const timeEl = $(cel).closest("li, [class*='item']").find("[class*='time'], time, .date").text().trim();
-          chapters.push({ label, id: chId, timeAgo: timeEl });
-        });
-        const ratingText = $el.find(".rating, .score").text().trim();
-        const rating = parseRating(ratingText);
-        latestWithTime.push({
-          id: extractIdSuffix(slug), slug, title, coverUrl, type: "Manhwa", status: null, rating, latestChapter: chapters[0]?.label ?? null, genres: [], updatedAt: null, chapters,
-        });
-      });
-
-      // Fallback: if we couldn't parse structured sections, parse all .unit elements
-      if (trending.length === 0 && latest.length === 0) {
-        $(".unit").each((i, el) => {
-          const item = parseMangaCard($, el);
-          if (!item) return;
-          if (i < 10) trending.push(item);
-          else latest.push(item);
-        });
-      }
-
-      return { featured, trending: trending.slice(0, 10), latest: latestWithTime.length > 0 ? latestWithTime : latest, latestRaw: latest };
+      return { featured, latest };
     });
 
     res.setHeader("Cache-Control", "public, max-age=240, s-maxage=300");
     res.json(data);
   } catch (err) {
     req.log.error({ err }, "mangafire home failed");
-    res.json({ featured: [], trending: [], latest: [] });
+    res.json({ featured: [], latest: [] });
   }
 });
 
@@ -212,10 +182,10 @@ router.get("/mangafire/home", async (req, res): Promise<void> => {
 router.get("/mangafire/trending-today", async (req, res): Promise<void> => {
   try {
     const data = await withCache("mf:trending-today", 10 * 60_000, async () => {
-      const html = await mfFetch("/home");
+      const html = await mfFetch("/filter?sort=trending&page=1");
       const $ = cheerio.load(html);
       const items: MFManga[] = [];
-      $(".unit, .manga-unit").each((_, el) => {
+      $(".unit").each((_, el) => {
         const item = parseMangaCard($, el);
         if (item && items.length < 4) items.push(item);
       });
@@ -230,47 +200,27 @@ router.get("/mangafire/trending-today", async (req, res): Promise<void> => {
 
 // ─── GET /api/mangafire/latest ────────────────────────────────────────────────
 router.get("/mangafire/latest", async (req, res): Promise<void> => {
-  const page = parseInt(String(req.query.page ?? "1"), 10);
+  const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
   const cacheKey = `mf:latest:${page}`;
   try {
     const data = await withCache(cacheKey, 3 * 60_000, async () => {
       const html = await mfFetch(`/filter?sort=recently_updated&page=${page}`);
       const $ = cheerio.load(html);
-      const items: Array<MFManga & { chapters?: Array<{ label: string; id: string; timeAgo: string }> }> = [];
+      const items: MFManga[] = [];
 
-      // Try to find list-style latest updates (with chapters + time)
-      $(".manga-item, .list-item, [class*='update'] .item").each((_, el) => {
-        const $el = $(el);
-        const href = $el.find("a[href*='/manga/']").first().attr("href") ?? "";
-        const slug = extractMangaId(href);
-        if (!slug) return;
-        const title = $el.find(".title, .name, h3").first().text().trim() || "";
-        if (!title) return;
-        const coverUrl = $el.find("img").attr("src") || $el.find("img").attr("data-src") || "";
-        const ratingText = $el.find(".rating, .score").text().trim();
-        const rating = parseRating(ratingText);
-        const chapters: Array<{ label: string; id: string; timeAgo: string }> = [];
-        $el.find("a[href*='chapter']").each((i, cel) => {
-          if (i >= 3) return;
-          const chHref = $(cel).attr("href") ?? "";
-          const chId = chHref.split("/").pop() ?? "";
-          const label = $(cel).text().trim();
-          const timeEl = $(cel).parent().find("time, .date, [class*='time']").text().trim();
-          chapters.push({ label, id: chId, timeAgo: timeEl });
-        });
-        items.push({ id: extractIdSuffix(slug), slug, title, coverUrl, type: "Manhwa", status: null, rating, latestChapter: chapters[0]?.label ?? null, genres: [], updatedAt: null, chapters });
+      $(".unit").each((_, el) => {
+        const item = parseMangaCard($, el);
+        if (item) items.push(item);
       });
 
-      // Fallback: grid cards
-      if (items.length === 0) {
-        $(".unit, .manga-unit").each((_, el) => {
-          const item = parseMangaCard($, el);
-          if (item) items.push(item);
-        });
-      }
+      // Pagination: last page number from ".page-item a" links
+      let totalPages = 1;
+      $(".page-item a, .pagination a").each((_, el) => {
+        const n = parseInt($(el).text().trim());
+        if (!isNaN(n) && n > totalPages) totalPages = n;
+      });
 
-      const totalPages = parseInt($("[class*='pagination'] li:last-child a, .page-item:last-child a").text().trim() || "1");
-      return { items: items.slice(0, 20), page, hasMore: items.length >= 20, totalPages: isNaN(totalPages) ? 5 : totalPages };
+      return { items, page, hasMore: items.length >= 20, totalPages: Math.max(totalPages, page + 1) };
     });
     res.json(data);
   } catch (err) {
@@ -280,10 +230,10 @@ router.get("/mangafire/latest", async (req, res): Promise<void> => {
 });
 
 // ─── GET /api/mangafire/popular ───────────────────────────────────────────────
+// /top is JS-rendered; use /filter?sort= instead
 router.get("/mangafire/popular", async (req, res): Promise<void> => {
   const period = String(req.query.period ?? "weekly");
   const cacheKey = `mf:popular:${period}`;
-  // Map period to filter sort param — /top page is JS-rendered; use /filter instead
   const sortMap: Record<string, string> = { weekly: "trending", monthly: "popular", alltime: "rating" };
   const sort = sortMap[period] ?? "trending";
 
@@ -292,12 +242,10 @@ router.get("/mangafire/popular", async (req, res): Promise<void> => {
       const html = await mfFetch(`/filter?sort=${sort}&page=1`);
       const $ = cheerio.load(html);
       const items: MFManga[] = [];
-
       $(".unit").each((_, el) => {
         const item = parseMangaCard($, el);
         if (item && items.length < 10) items.push(item);
       });
-
       return { items, period };
     });
     res.json(data);
@@ -307,7 +255,17 @@ router.get("/mangafire/popular", async (req, res): Promise<void> => {
   }
 });
 
-// ─── GET /api/mangafire/series/:slug ─────────────────────────────────────────
+// ─── GET /api/mangafire/series/:slug ──────────────────────────────────────────
+// Actual series HTML structure (confirmed):
+//   .info > p                    → "Releasing" (status)
+//   h1[itemprop="name"]          → title
+//   div.poster img               → cover
+//   [data-score]                 → "8.97" (MF rating)
+//   .description                 → synopsis
+//   a[href*="/genre/"]           → genre links
+//   a[href*="/type/"]            → type
+//   [itemprop="author"] / a[href*="/author/"]  → author
+//   script JSON: "manga_id":16997 → numeric manga ID
 router.get("/mangafire/series/:slug", async (req, res): Promise<void> => {
   const { slug } = req.params as { slug: string };
   const cacheKey = `mf:series:${slug}`;
@@ -317,59 +275,80 @@ router.get("/mangafire/series/:slug", async (req, res): Promise<void> => {
       const html = await mfFetch(`/manga/${slug}`);
       const $ = cheerio.load(html);
 
-      const title = $("h1.name, h1.title, .manga-name h1, .series-name, h1").first().text().trim();
-      const coverUrl = $(".poster img, .cover img, .manga-poster img, .series-poster img").first().attr("src") ||
-        $("img.poster, img.cover, img[class*='poster']").first().attr("src") || "";
+      // Title
+      const title =
+        $("h1[itemprop='name']").text().trim() ||
+        $("h1.name, h1.title, h1").first().text().trim();
 
-      const description = $(".description, .summary, .manga-description, [class*='description'], [class*='summary']").first().text().trim();
+      // Cover
+      const coverUrl =
+        $("div.poster img").first().attr("src") ||
+        $(".poster img").first().attr("src") || "";
 
-      const statusText = $(".status, [class*='status']").first().text().trim();
-      const typeText = $(".type, [class*='type'], .badge-type").first().text().trim();
+      // Status: .info > p first text child — "Releasing" → Ongoing
+      const statusRaw = $(".info > p").first().text().trim() ||
+                        $(".info p").first().text().trim();
+      let status = "Ongoing";
+      const sl = statusRaw.toLowerCase();
+      if (sl.includes("complet")) status = "Completed";
+      else if (sl.includes("hiatus")) status = "Hiatus";
+      else if (sl.includes("drop") || sl.includes("axed") || sl.includes("cancel")) status = "Dropped";
 
+      // Rating from data-score attribute (MangaFire own rating)
+      const ratingAttr = $("[data-score]").first().attr("data-score") ?? "";
+      const rating = ratingAttr ? parseFloat(ratingAttr) : null;
+
+      // Description
+      const description = $(".description").text().trim() ||
+                          $("[class*='description'], [class*='summary']").first().text().trim();
+
+      // Genres are inside .meta > div > span > a[href*='/genre/']
+      // Using .meta scope avoids picking up the full site-nav genre list
+      const genreSet = new Set<string>();
+      $(".meta a[href*='/genre/']").each((_, el) => {
+        const g = $(el).text().trim();
+        if (g) genreSet.add(g);
+      });
+      const genres = Array.from(genreSet);
+
+      // Type from /type/ link in .min-info
+      const typeRaw =
+        $(".min-info a[href*='/type/']").first().text().trim() ||
+        $("a[href*='/type/']").first().text().trim();
       let type = "Manga";
-      const tl = typeText.toLowerCase();
+      const tl = typeRaw.toLowerCase();
       if (tl.includes("manhwa")) type = "Manhwa";
       else if (tl.includes("manhua")) type = "Manhua";
+      else if (typeRaw) type = typeRaw;
 
-      let status = "Ongoing";
-      const sl = statusText.toLowerCase();
-      if (sl.includes("completed")) status = "Completed";
-      else if (sl.includes("hiatus")) status = "Hiatus";
-      else if (sl.includes("dropped") || sl.includes("axed")) status = "Dropped";
-
-      const ratingText = $(".score, .rating, [class*='score'], [class*='rating']").first().text().trim();
-      const rating = parseRating(ratingText);
-
-      const genres: string[] = [];
-      $(".genres a, .genre a, [class*='genre'] a, .tags a").each((_, el) => {
-        const g = $(el).text().trim();
-        if (g) genres.push(g);
+      // Author(s)
+      const authors: string[] = [];
+      $("[itemprop='author'], a[href*='/author/']").each((_, el) => {
+        const name = $(el).text().trim();
+        if (name && !authors.includes(name)) authors.push(name);
       });
+      const author = authors.join(", ");
 
-      const altTitles: string[] = [];
-      $(".alt-title, .alternative, [class*='alt-title']").each((_, el) => {
-        const t = $(el).text().trim();
-        if (t) altTitles.push(t);
-      });
+      // Numeric manga ID for AJAX chapter list (from inline script JSON)
+      const mangaIdMatch =
+        html.match(/"manga_id"\s*:\s*(\d+)/) ||
+        html.match(/manga_id['":\s]+(\d+)/);
+      const mangaId = mangaIdMatch?.[1] ?? "";
 
-      const author = $(".author a, [class*='author'] a").first().text().trim() ||
-        $(".author, [class*='author']").first().text().replace(/author:/i, "").trim();
-      const artist = $(".artist a, [class*='artist'] a").first().text().trim();
+      // Alt titles from h6 (contains alternative language titles)
+      const altTitlesRaw = $("h6").first().text().trim();
+      const altTitles = altTitlesRaw
+        ? altTitlesRaw.split(/[;,]/).map((t) => t.trim()).filter(Boolean)
+        : [];
 
-      // Extract manga's internal numeric ID from page (used for AJAX chapter list)
-      let mangaId = "";
-      const dataId = $("[data-id]").attr("data-id") || $("[data-manga-id]").attr("data-manga-id") || "";
-      if (dataId) mangaId = dataId;
-      else {
-        const idMatch = html.match(/manga_id\s*[=:]\s*["']?(\d+)/);
-        if (idMatch) mangaId = idMatch[1]!;
-      }
+      // Chapter count hint from visible read links
+      const readLinksCount = $("a[href*='/read/'][href*='/en/chapter-']").length;
 
-      // Try to extract chapter count from page
-      const totalChaptersText = $("[class*='total-chapter'], [class*='chapter-count']").first().text().trim();
-      const totalChapters = parseInt(totalChaptersText.replace(/\D/g, "")) || 0;
-
-      return { slug, mangaId, title, coverUrl, description, type, status, rating, genres, altTitles, author, artist, totalChapters };
+      return {
+        slug, mangaId, title, coverUrl, description,
+        type, status, rating, genres, altTitles, author,
+        totalChapters: readLinksCount,
+      };
     });
     res.json(data);
   } catch (err) {
@@ -378,108 +357,53 @@ router.get("/mangafire/series/:slug", async (req, res): Promise<void> => {
   }
 });
 
-// ─── GET /api/mangafire/chapters/:mangaId ─────────────────────────────────────
-router.get("/mangafire/chapters/:mangaId", async (req, res): Promise<void> => {
-  const { mangaId } = req.params as { mangaId: string };
-  const lang = String(req.query.lang ?? "en");
-  const cacheKey = `mf:chapters:${mangaId}:${lang}`;
-
-  try {
-    const data = await withCache(cacheKey, 5 * 60_000, async () => {
-      // Try AJAX endpoint first
-      let chapters: Array<{ id: string; number: number; title: string; releaseDate: string | null }> = [];
-
-      try {
-        const json = await mfFetchJson<{ status: boolean; result: string }>(`/ajax/manga/${mangaId}/chapter/${lang}`);
-        if (json.status && json.result) {
-          const $ = cheerio.load(json.result);
-          $("li, tr, [class*='chapter-item'], [class*='chapter'] a").each((_, el) => {
-            const $el = $(el);
-            const href = $el.find("a").attr("href") || $el.attr("href") || "";
-            const idMatch = href.match(/\/(\d+)\/?(?:\?|#|$)/);
-            const chId = idMatch ? idMatch[1]! : href.split("/").pop() ?? "";
-            if (!chId) return;
-            const numText = $el.find("[class*='name'], [class*='number']").text().trim() || $el.find("a").text().trim();
-            const numMatch = numText.match(/[\d.]+/);
-            const number = numMatch ? parseFloat(numMatch[0]) : 0;
-            const dateText = $el.find("time, [class*='date'], [class*='time']").text().trim();
-            chapters.push({ id: chId, number, title: numText || `Chapter ${number}`, releaseDate: dateText || null });
-          });
-        }
-      } catch {
-        // AJAX failed, chapters will be empty
-      }
-
-      return { chapters, total: chapters.length };
-    });
-    res.json(data);
-  } catch (err) {
-    req.log.error({ err }, "mangafire chapters failed");
-    res.json({ chapters: [], total: 0 });
-  }
-});
-
 // ─── GET /api/mangafire/chapters-by-slug/:slug ────────────────────────────────
-// First fetch series to get mangaId, then fetch chapters
+// Parses chapter list directly from the series HTML — no AJAX needed.
+// Series page contains ALL chapter read links:
+//   <a href="/read/{slug}/en/chapter-{N}">...</a>
+// Chapter ID format in our system: "{slug}/en/chapter-{N}"
 router.get("/mangafire/chapters-by-slug/:slug", async (req, res): Promise<void> => {
   const { slug } = req.params as { slug: string };
   const cacheKey = `mf:chapters-slug:${slug}`;
 
   try {
     const data = await withCache(cacheKey, 5 * 60_000, async () => {
-      // Fetch the series page to find the manga ID
       const html = await mfFetch(`/manga/${slug}`);
       const $ = cheerio.load(html);
 
-      let mangaId = "";
-      const dataId = $("[data-id]").attr("data-id") || $("[data-manga-id]").attr("data-manga-id") || "";
-      if (dataId) mangaId = dataId;
-      else {
-        const idMatch = html.match(/manga_id\s*[=:]\s*["']?(\d+)/i) ||
-          html.match(/"manga_id"\s*:\s*(\d+)/) ||
-          html.match(/data-id="(\d+)"/) ||
-          html.match(/var\s+mangaId\s*=\s*(\d+)/);
-        if (idMatch) mangaId = idMatch[1]!;
-      }
+      // Collect unique chapter IDs from read links matching /read/{slug}/en/chapter-{N}
+      const chapMap = new Map<string, { id: string; number: number; title: string; releaseDate: string | null }>();
 
-      let chapters: Array<{ id: string; number: number; title: string; releaseDate: string | null }> = [];
+      $("a[href*='/read/']").each((_, el) => {
+        const href = $(el).attr("href") ?? "";
+        // Match /read/{slug}/en/chapter-{number}
+        const m = href.match(/^\/read\/([^/]+\/en\/chapter-[\d.]+(?:\.\d+)?)/);
+        if (!m) return;
+        const chId = m[1]!; // e.g. "blue-lockk.kw9j9/en/chapter-350"
+        if (chapMap.has(chId)) return; // dedupe
 
-      if (mangaId) {
-        try {
-          const json = await mfFetchJson<{ status: boolean; result: string }>(`/ajax/manga/${mangaId}/chapter/en`);
-          if (json.status && json.result) {
-            const $ch = cheerio.load(json.result);
-            $ch("li, [class*='chapter-item']").each((_, el) => {
-              const $el = $ch(el);
-              const href = $el.find("a").attr("href") || "";
-              const idMatch = href.match(/\/read\/[^/]+\/([^/?#]+)/);
-              const chId = idMatch ? idMatch[1]! : href.split("/").pop() ?? "";
-              if (!chId) return;
-              const numText = $el.find("[class*='name']").text().trim() || $el.find("a").text().trim();
-              const numMatch = numText.match(/[\d.]+/);
-              const number = numMatch ? parseFloat(numMatch[0]) : 0;
-              const dateText = $el.find("time, [class*='date']").text().trim();
-              const title = numText || `Chapter ${number}`;
-              chapters.push({ id: chId, number, title, releaseDate: dateText || null });
-            });
-          }
-        } catch { /* ignore */ }
-      }
+        const numM = chId.match(/chapter-([\d.]+)$/);
+        const number = numM ? parseFloat(numM[1]!) : 0;
+        if (number === 0) return;
 
-      // Fallback: parse chapters from the series HTML page directly
-      if (chapters.length === 0) {
-        $("a[href*='/read/']").each((_, el) => {
-          const href = $(el).attr("href") ?? "";
-          const idMatch = href.match(/\/read\/[^/]+\/([^/?#]+)/);
-          const chId = idMatch ? idMatch[1]! : "";
-          if (!chId) return;
-          const text = $(el).text().trim();
-          const numMatch = text.match(/[\d.]+/);
-          const number = numMatch ? parseFloat(numMatch[0]) : 0;
-          const dateText = $(el).closest("li").find("time, .date").text().trim();
-          chapters.push({ id: chId, number, title: text || `Chapter ${number}`, releaseDate: dateText || null });
+        // Try to get release date from sibling span in same li
+        const $li = $(el).closest("li");
+        const releaseDate = $li.find("span, time").last().text().trim() || null;
+
+        chapMap.set(chId, {
+          id: chId,
+          number,
+          title: `Chapter ${number}`,
+          releaseDate,
         });
-      }
+      });
+
+      // Sort descending by chapter number (newest first)
+      const chapters = Array.from(chapMap.values()).sort((a, b) => b.number - a.number);
+
+      // Also get manga ID in case it's needed
+      const mangaIdMatch = html.match(/"manga_id"\s*:\s*(\d+)/);
+      const mangaId = mangaIdMatch?.[1] ?? "";
 
       return { chapters, total: chapters.length, mangaId };
     });
@@ -490,92 +414,95 @@ router.get("/mangafire/chapters-by-slug/:slug", async (req, res): Promise<void> 
   }
 });
 
+// ─── GET /api/mangafire/chapters/:mangaId ────────────────────────────────────
+// Kept for compatibility; redirects to HTML parse via slug if possible
+router.get("/mangafire/chapters/:mangaId", async (req, res): Promise<void> => {
+  res.json({ chapters: [], total: 0, note: "Use chapters-by-slug instead" });
+});
+
 // ─── GET /api/mangafire/read/:chapterId ───────────────────────────────────────
+// chapterId is URL-encoded by the frontend (slashes become %2F).
+// The reader images AJAX on MangaFire requires a Cloudflare session cookie that
+// is tied to a browser challenge — not obtainable server-side.
+// Strategy:
+//   1. Try to extract images from page HTML (lazy-loaded img/data-src)
+//   2. Return embedUrl so the frontend can display the MangaFire reader in an iframe
 router.get("/mangafire/read/:chapterId", async (req, res): Promise<void> => {
-  const { chapterId } = req.params as { chapterId: string };
-  const slug = String(req.query.slug ?? "");
+  const rawId = req.params.chapterId ?? "";
+  const chapterId = decodeURIComponent(rawId);
   const cacheKey = `mf:read:${chapterId}`;
 
   try {
     const data = await withCache(cacheKey, 30 * 60_000, async () => {
-      let pages: string[] = [];
+      const pages: string[] = [];
+      const readUrl = `${MF_BASE}/read/${chapterId}`;
 
-      // Try AJAX JSON endpoint
+      // Try to scrape page images from the reader HTML
       try {
-        const json = await mfFetchJson<{
-          status: boolean;
-          result: {
-            images?: Array<[string, number, number]>;
-            pages?: Array<{ url: string }>;
-          };
-        }>(`/ajax/read/${chapterId}/1`);
+        const html = await mfFetch(`/read/${chapterId}`);
+        const $ = cheerio.load(html);
 
-        if (json.status && json.result) {
-          if (Array.isArray(json.result.images)) {
-            pages = json.result.images.map(([url]) => url);
-          } else if (Array.isArray(json.result.pages)) {
-            pages = json.result.pages.map((p) => p.url);
+        // Some mirrors embed lazy-loaded images directly
+        $("img[data-src], img[data-lazy-src], img.page-img").each((_, el) => {
+          const src = $(el).attr("data-src") || $(el).attr("data-lazy-src") || "";
+          if (src && src.startsWith("http")) pages.push(src);
+        });
+
+        // Try img[src] that look like chapter pages (CDN patterns)
+        // Exclude asset/logo images (e.g. s.mfcdn.nl/assets/...)
+        if (pages.length === 0) {
+          $("img").each((_, el) => {
+            const src = $(el).attr("src") || "";
+            if (src && (src.includes("mfcdn") || src.includes("mangafire")) &&
+                (src.includes(".jpg") || src.includes(".webp") || src.includes(".png")) &&
+                !src.includes("/assets/")) {
+              pages.push(src);
+            }
+          });
+        }
+
+        // Try extracting from inline JSON / script tags
+        if (pages.length === 0) {
+          const imgPattern = /"(https:\/\/[^"]+(?:mfcdn|cdn)[^"]+\.(?:jpg|jpeg|webp|png))"/gi;
+          let m: RegExpExecArray | null;
+          while ((m = imgPattern.exec(html)) !== null) {
+            const url = m[1]!;
+            if (!pages.includes(url)) pages.push(url);
           }
         }
-      } catch { /* ignore, try HTML fallback */ }
-
-      // Fallback: fetch HTML reader page
-      if (pages.length === 0 && slug) {
-        try {
-          const html = await mfFetch(`/read/${slug}/${chapterId}`);
-          const $ = cheerio.load(html);
-          $(".reader img, [class*='reader'] img, #reader img, .pages img").each((_, el) => {
-            const src = $(el).attr("src") || $(el).attr("data-src") || "";
-            if (src && src.startsWith("http")) pages.push(src);
-          });
-          // Try to extract from page source JS
-          if (pages.length === 0) {
-            const urlMatches = html.matchAll(/"(https:\/\/[^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/g);
-            for (const m of urlMatches) {
-              const u = m[1];
-              if (u && (u.includes("/manga/") || u.includes("/chapter/") || u.includes("/page/"))) {
-                pages.push(u);
-              }
-            }
-          }
-        } catch { /* ignore */ }
+      } catch {
+        // Scraping the reader page failed — embedUrl fallback will be used
       }
 
-      return { pages, chapterId };
+      return { pages, chapterId, embedUrl: readUrl };
     });
     res.json(data);
   } catch (err) {
     req.log.error({ err }, "mangafire read failed");
-    res.json({ pages: [], chapterId });
+    const readUrl = `${MF_BASE}/read/${chapterId}`;
+    res.json({ pages: [], chapterId, embedUrl: readUrl });
   }
 });
 
 // ─── GET /api/mangafire/search ────────────────────────────────────────────────
 router.get("/mangafire/search", async (req, res): Promise<void> => {
   const q = String(req.query.q ?? "").trim();
-  const page = parseInt(String(req.query.page ?? "1"), 10);
+  const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
   const sort = String(req.query.sort ?? "recently_updated");
   const status = String(req.query.status ?? "");
   const type = String(req.query.type ?? "");
   const genres = String(req.query.genres ?? "");
-  const minChapters = parseInt(String(req.query.minChapters ?? "0"), 10);
-  const cacheKey = `mf:search:${q}:${page}:${sort}:${status}:${type}:${genres}:${minChapters}`;
+  const cacheKey = `mf:search:${q}:${page}:${sort}:${status}:${type}:${genres}`;
 
   const sortMap: Record<string, string> = {
     recently_updated: "recently_updated",
     popular: "trending",
-    rating: "top_rated",
-    "a-z": "a_z",
-    newest: "new",
+    rating: "rating",
+    "a-z": "a-z",
+    newest: "newest",
   };
-
-  const statusMap: Record<string, string> = {
-    ongoing: "1", completed: "2", hiatus: "3", dropped: "4",
-  };
-
-  const typeMap: Record<string, string> = {
-    manga: "1", manhwa: "2", manhua: "3",
-  };
+  const statusMap: Record<string, string> = { ongoing: "1", completed: "2", hiatus: "3", dropped: "4" };
+  const typeMap: Record<string, string> = { manga: "1", manhwa: "2", manhua: "3" };
 
   try {
     const data = await withCache(cacheKey, 3 * 60_000, async () => {
@@ -595,20 +522,18 @@ router.get("/mangafire/search", async (req, res): Promise<void> => {
       const $ = cheerio.load(html);
       const items: MFManga[] = [];
 
-      $(".unit, .manga-unit, [class*='manga-item']").each((_, el) => {
+      $(".unit").each((_, el) => {
         const item = parseMangaCard($, el);
-        if (!item) return;
-        if (minChapters > 0) {
-          const chNum = parseInt((item.latestChapter ?? "").replace(/\D/g, "")) || 0;
-          if (chNum < minChapters) return;
-        }
-        items.push(item);
+        if (item) items.push(item);
       });
 
-      const lastPage = $(".page-item:last-child a, [class*='pagination'] li:last-child a").text().trim();
-      const totalPages = parseInt(lastPage) || 1;
+      let totalPages = 1;
+      $(".page-item a, .pagination a").each((_, el) => {
+        const n = parseInt($(el).text().trim());
+        if (!isNaN(n) && n > totalPages) totalPages = n;
+      });
 
-      return { items: items.slice(0, 20), page, hasMore: items.length >= 20, totalPages };
+      return { items, page, hasMore: items.length >= 20, totalPages };
     });
     res.json(data);
   } catch (err) {
