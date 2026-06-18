@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { Link } from "wouter";
-import { ChevronRight, BookOpen, TrendingUp, Clock, Zap } from "lucide-react";
+import { ChevronRight, TrendingUp, Clock, Zap, ChevronLeft } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -8,18 +8,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function proxyImage(url: string): string {
   if (!url) return "";
   if (!url.startsWith("http://") && !url.startsWith("https://")) return url;
-  if (url.includes("uploads.mangadex.org")) return url;
   return `${BASE}/api/proxy-image?url=${encodeURIComponent(url)}`;
-}
-
-function relativeTime(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const diff = Date.now() - new Date(iso).getTime();
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return new Date(iso).toLocaleDateString();
 }
 
 interface AsuraItem {
@@ -29,19 +18,6 @@ interface AsuraItem {
   status: string;
   latestChapter?: number;
   genres: string[];
-  sourceId?: string;
-}
-
-interface MangaItem {
-  id: string;
-  title: string;
-  coverImage: string;
-  provider: string;
-  type?: string | null;
-  status?: string | null;
-  latestChapter?: string | null;
-  updatedAt?: string | null;
-  isNew?: boolean;
 }
 
 function AsuraCard({ item, size = "sm" }: { item: AsuraItem; size?: "sm" | "lg" }) {
@@ -81,44 +57,6 @@ function AsuraCard({ item, size = "sm" }: { item: AsuraItem; size?: "sm" | "lg" 
   );
 }
 
-function MangaRow({ item }: { item: MangaItem }) {
-  const [imgError, setImgError] = useState(false);
-  return (
-    <Link
-      href={`/series/${item.provider}/${encodeURIComponent(item.id)}`}
-      className="group flex gap-3 py-2.5 border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] -mx-1 px-1 rounded-lg transition-colors"
-    >
-      <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-[#13131f]">
-        {item.coverImage && !imgError ? (
-          <img
-            src={proxyImage(item.coverImage)}
-            alt={item.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            loading="lazy"
-            onError={() => setImgError(true)}
-          />
-        ) : null}
-      </div>
-      <div className="flex-1 min-w-0 flex flex-col justify-center">
-        <h3 className="text-sm font-bold text-white/90 group-hover:text-primary transition-colors line-clamp-1 mb-1">
-          {item.isNew && (
-            <span className="text-[9px] font-extrabold uppercase bg-primary text-white px-1.5 py-0.5 rounded mr-1.5 align-middle">NEW</span>
-          )}
-          {item.title}
-        </h3>
-        <div className="flex items-center gap-2">
-          {item.latestChapter && (
-            <span className="text-xs text-primary/80 font-medium truncate">{item.latestChapter}</span>
-          )}
-          {item.updatedAt && (
-            <span className="text-[10px] text-white/25 shrink-0 ml-auto">{relativeTime(item.updatedAt)}</span>
-          )}
-        </div>
-      </div>
-    </Link>
-  );
-}
-
 function SkeletonCard() {
   return (
     <div>
@@ -131,35 +69,65 @@ function SkeletonCard() {
 
 function HeroCarousel({ items }: { items: AsuraItem[] }) {
   const [idx, setIdx] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-
-  useEffect(() => {
-    if (items.length <= 1) return;
-    timerRef.current = setInterval(() => setIdx((i) => (i + 1) % items.length), 4000);
-    return () => clearInterval(timerRef.current);
-  }, [items.length]);
+  const touchStartX = useRef<number>(0);
+  const touchStartY = useRef<number>(0);
 
   if (!items.length) return null;
-  const active = items[idx];
+  const count = Math.min(50, items.length);
+  const active = items[idx % count]!;
+
+  function prev() {
+    setIdx((i) => (i - 1 + count) % count);
+  }
+  function next() {
+    setIdx((i) => (i + 1) % count);
+  }
+
+  function handleTouchStart(e: React.TouchEvent) {
+    touchStartX.current = e.touches[0]!.clientX;
+    touchStartY.current = e.touches[0]!.clientY;
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    const dx = e.changedTouches[0]!.clientX - touchStartX.current;
+    const dy = Math.abs(e.changedTouches[0]!.clientY - touchStartY.current);
+    if (Math.abs(dx) > 40 && dy < 60) {
+      if (dx > 0) prev();
+      else next();
+    }
+  }
+
+  const visible = [-2, -1, 0, 1, 2];
 
   return (
     <div className="relative bg-[#07070d]">
-      <div className="relative overflow-hidden" style={{ height: "300px" }}>
-        {items.slice(0, 7).map((item, i) => {
-          let offset = i - idx;
-          const len = Math.min(7, items.length);
-          if (offset > len / 2) offset -= len;
-          if (offset < -len / 2) offset += len;
-          if (Math.abs(offset) > 2) return null;
+      <div
+        className="relative overflow-hidden select-none"
+        style={{ height: "300px" }}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        {visible.map((offset) => {
+          const i = ((idx + offset) % count + count) % count;
+          const item = items[i]!;
           const scale = offset === 0 ? 1 : Math.abs(offset) === 1 ? 0.82 : 0.66;
           const opacity = offset === 0 ? 1 : Math.abs(offset) === 1 ? 0.65 : 0.3;
           const zIndex = offset === 0 ? 30 : Math.abs(offset) === 1 ? 20 : 10;
           return (
             <div
-              key={`${item.id}-${i}`}
+              key={`${i}-${offset}`}
               className="absolute top-0 bottom-0 flex items-center transition-all duration-500 ease-out cursor-pointer"
-              style={{ left: "50%", transform: `translateX(calc(-50% + ${offset * 58}vw)) scale(${scale})`, zIndex, opacity, width: "min(52vw, 210px)", filter: offset === 0 ? "none" : "brightness(0.4)" }}
-              onClick={() => offset !== 0 && setIdx(i)}
+              style={{
+                left: "50%",
+                transform: `translateX(calc(-50% + ${offset * 58}vw)) scale(${scale})`,
+                zIndex,
+                opacity,
+                width: "min(52vw, 210px)",
+                filter: offset === 0 ? "none" : "brightness(0.4)",
+              }}
+              onClick={() => {
+                if (offset !== 0) setIdx(i);
+              }}
             >
               <Link
                 href={offset === 0 ? `/asura/series/${encodeURIComponent(item.id)}` : "#"}
@@ -178,15 +146,34 @@ function HeroCarousel({ items }: { items: AsuraItem[] }) {
           );
         })}
       </div>
-      <div className="text-center pt-2 pb-4 px-6">
+
+      <div className="text-center pt-2 pb-1 px-6">
         <Link href={`/asura/series/${encodeURIComponent(active.id)}`}>
           <h2 className="text-white font-black text-base leading-tight line-clamp-1 hover:text-primary transition-colors">{active.title}</h2>
         </Link>
-        <div className="flex items-center justify-center gap-1.5 mt-2">
-          {items.slice(0, 7).map((_, i) => (
-            <button key={i} onClick={() => setIdx(i)} className={`rounded-full transition-all duration-300 ${i === idx ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-white/25"}`} />
-          ))}
+      </div>
+
+      {/* Arrow + dot controls */}
+      <div className="flex items-center justify-center gap-3 pb-4 px-4">
+        <button onClick={prev} className="p-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-white/50 hover:text-white transition-all">
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <div className="flex items-center gap-1">
+          {Array.from({ length: Math.min(7, count) }).map((_, i) => {
+            const dotIdx = idx <= 3 ? i : idx >= count - 4 ? count - 7 + i : idx - 3 + i;
+            const active = dotIdx === idx;
+            return (
+              <button
+                key={i}
+                onClick={() => setIdx(dotIdx)}
+                className={`rounded-full transition-all duration-300 ${active ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-white/25"}`}
+              />
+            );
+          })}
         </div>
+        <button onClick={next} className="p-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-white/50 hover:text-white transition-all">
+          <ChevronRight className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );
@@ -195,8 +182,6 @@ function HeroCarousel({ items }: { items: AsuraItem[] }) {
 export default function HomePage() {
   const [asuraData, setAsuraData] = useState<{ featured: AsuraItem[]; popular: AsuraItem[]; latest: AsuraItem[] } | null>(null);
   const [asuraLoading, setAsuraLoading] = useState(true);
-  const [mangaLatest, setMangaLatest] = useState<MangaItem[]>([]);
-  const [mangaLoading, setMangaLoading] = useState(true);
 
   useEffect(() => {
     fetch(`${BASE}/api/asurascans/home`)
@@ -204,12 +189,6 @@ export default function HomePage() {
       .then((d) => setAsuraData(d))
       .catch(() => {})
       .finally(() => setAsuraLoading(false));
-
-    fetch(`${BASE}/api/manga/home`)
-      .then((r) => r.ok ? r.json() : Promise.reject(r))
-      .then((d: { latestUpdates?: MangaItem[] }) => setMangaLatest(d.latestUpdates ?? []))
-      .catch(() => {})
-      .finally(() => setMangaLoading(false));
   }, []);
 
   const featured = asuraData?.featured ?? [];
@@ -225,16 +204,12 @@ export default function HomePage() {
             <Skeleton className="rounded-2xl bg-[#13131f]" style={{ width: "min(52vw, 210px)", aspectRatio: "2/3" }} />
             <Skeleton className="rounded-2xl bg-[#13131f] opacity-40" style={{ width: "min(42vw, 180px)", aspectRatio: "2/3" }} />
           </div>
-          <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-1.5">
-            {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="rounded-full bg-[#13131f]" style={{ width: i === 0 ? 20 : 6, height: 6 }} />)}
-          </div>
         </div>
       ) : (
-        featured.length > 0 && <HeroCarousel items={featured} />
+        featured.length > 0 && <HeroCarousel items={featured.length >= 10 ? popular.slice(0, 50) : featured} />
       )}
 
       <div className="max-w-2xl mx-auto">
-        {/* Popular Manhwa */}
         <section className="px-4 pt-6 pb-2">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
@@ -252,8 +227,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Latest Manhwa */}
-        <section className="px-4 pt-5 pb-2">
+        <section className="px-4 pt-5 pb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
               <Clock className="w-4 h-4 text-orange-400" /> Latest Manhwa
@@ -266,32 +240,6 @@ export default function HomePage() {
             {asuraLoading
               ? Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)
               : latest.slice(0, 8).map((item) => <AsuraCard key={item.id} item={item} />)
-            }
-          </div>
-        </section>
-
-        {/* Latest Manga Updates */}
-        <section className="px-4 pt-5 pb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
-              <BookOpen className="w-4 h-4 text-primary" /> Latest Manga
-            </h2>
-            <Link href="/latest" className="flex items-center gap-0.5 text-xs text-primary font-semibold hover:text-primary/80">
-              View all <ChevronRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-          <div>
-            {mangaLoading
-              ? Array.from({ length: 8 }).map((_, i) => (
-                  <div key={i} className="flex gap-3 py-2.5 border-b border-white/[0.04]">
-                    <Skeleton className="w-14 h-14 rounded-lg shrink-0 bg-[#13131f]" />
-                    <div className="flex-1 space-y-2 pt-1">
-                      <Skeleton className="h-3.5 w-3/4 bg-[#13131f] rounded" />
-                      <Skeleton className="h-3 w-1/2 bg-[#13131f] rounded" />
-                    </div>
-                  </div>
-                ))
-              : mangaLatest.slice(0, 20).map((item) => <MangaRow key={`${item.provider}-${item.id}`} item={item} />)
             }
           </div>
         </section>

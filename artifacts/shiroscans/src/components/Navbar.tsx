@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { Search, BookmarkCheck, Clock, Heart, User, Settings, LogOut, ChevronDown, Menu, X, Compass, Zap, BarChart2, Loader2, BookOpen } from "lucide-react";
 import { useGetMe, useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
@@ -19,7 +19,6 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function proxyImage(url: string): string {
   if (!url) return "";
   if (!url.startsWith("http://") && !url.startsWith("https://")) return url;
-  if (url.includes("uploads.mangadex.org")) return url;
   return `${BASE}/api/proxy-image?url=${encodeURIComponent(url)}`;
 }
 
@@ -31,6 +30,10 @@ interface SuggestionItem {
   type?: string | null;
 }
 
+function isMangaSection(location: string): boolean {
+  return location.startsWith("/manga");
+}
+
 export default function Navbar() {
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -40,6 +43,8 @@ export default function Navbar() {
   const [suggestLoading, setSuggestLoading] = useState(false);
   const suggestDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const queryClient = useQueryClient();
+
+  const inManga = isMangaSection(location);
 
   const { data: user } = useGetMe({ query: { queryKey: getGetMeQueryKey(), retry: false, throwOnError: false } });
 
@@ -56,7 +61,11 @@ export default function Navbar() {
     e.preventDefault();
     if (searchQuery.trim()) {
       setShowSuggestions(false);
-      setLocation(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+      if (inManga) {
+        setLocation(`/manga?q=${encodeURIComponent(searchQuery.trim())}`);
+      } else {
+        setLocation(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+      }
       setSearchQuery("");
       setMobileOpen(false);
     }
@@ -77,49 +86,84 @@ export default function Navbar() {
     setSuggestLoading(true);
 
     suggestDebounce.current = setTimeout(() => {
-      Promise.all([
-        fetch(`${BASE}/api/manga/suggestions?q=${encodeURIComponent(val.trim())}`).then((r) => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
-        fetch(`${BASE}/api/asurascans/search?q=${encodeURIComponent(val.trim())}`).then((r) => r.ok ? r.json() : { results: [] }).catch(() => ({ results: [] })),
-      ]).then(([mdxData, asuraData]) => {
-        const mdx = (mdxData.items ?? []).slice(0, 4) as SuggestionItem[];
-        const asura = ((asuraData.results ?? []) as Array<{ id: string; title: string; coverUrl: string; genres: string[] }>)
-          .slice(0, 4)
-          .map((item) => ({ id: item.id, title: item.title, coverImage: item.coverUrl, provider: "asurascans", type: "Manhwa" }));
-        const seen = new Set<string>();
-        const merged: SuggestionItem[] = [];
-        for (const item of [...asura, ...mdx]) {
-          const key = item.title.toLowerCase().replace(/\s+/g, "");
-          if (!seen.has(key)) { seen.add(key); merged.push(item); }
-        }
-        setSuggestions(merged.slice(0, 7));
-      }).finally(() => setSuggestLoading(false));
+      if (inManga) {
+        // Search MangaPlus
+        fetch(`${BASE}/api/mangaplus/search?q=${encodeURIComponent(val.trim())}`)
+          .then((r) => r.ok ? r.json() : { results: [] })
+          .catch(() => ({ results: [] }))
+          .then((data: { results: Array<{ id: number; name: string; coverUrl: string; author: string }> }) => {
+            const items: SuggestionItem[] = (data.results ?? []).slice(0, 7).map((item) => ({
+              id: String(item.id),
+              title: item.name,
+              coverImage: item.coverUrl,
+              provider: "mangaplus",
+              type: "Manga",
+            }));
+            setSuggestions(items);
+          })
+          .finally(() => setSuggestLoading(false));
+      } else {
+        // Search AsuraScans + manga
+        Promise.all([
+          fetch(`${BASE}/api/manga/suggestions?q=${encodeURIComponent(val.trim())}`).then((r) => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
+          fetch(`${BASE}/api/asurascans/search?q=${encodeURIComponent(val.trim())}`).then((r) => r.ok ? r.json() : { results: [] }).catch(() => ({ results: [] })),
+        ]).then(([mdxData, asuraData]) => {
+          const mdx = (mdxData.items ?? []).slice(0, 3) as SuggestionItem[];
+          const asura = ((asuraData.results ?? []) as Array<{ id: string; title: string; coverUrl: string; genres: string[] }>)
+            .slice(0, 4)
+            .map((item) => ({ id: item.id, title: item.title, coverImage: item.coverUrl, provider: "asurascans", type: "Manhwa" }));
+          const seen = new Set<string>();
+          const merged: SuggestionItem[] = [];
+          for (const item of [...asura, ...mdx]) {
+            const key = item.title.toLowerCase().replace(/\s+/g, "");
+            if (!seen.has(key)) { seen.add(key); merged.push(item); }
+          }
+          setSuggestions(merged.slice(0, 7));
+        }).finally(() => setSuggestLoading(false));
+      }
     }, 220);
   }
 
   function goToSuggestion(item: SuggestionItem) {
     setShowSuggestions(false);
     setSearchQuery("");
-    const href = item.provider === "asurascans"
-      ? `/asura/series/${encodeURIComponent(item.id)}`
-      : `/series/${item.provider}/${encodeURIComponent(item.id)}`;
+    let href: string;
+    if (item.provider === "asurascans") {
+      href = `/asura/series/${encodeURIComponent(item.id)}`;
+    } else if (item.provider === "mangaplus") {
+      href = `/manga/series/${encodeURIComponent(item.id)}`;
+    } else {
+      href = `/series/${item.provider}/${encodeURIComponent(item.id)}`;
+    }
     setLocation(href);
   }
 
-  const navLinks = [
+  // Base nav links (manhwa side)
+  const manhwaLinks = [
     { href: "/", label: "Home" },
-    { href: "/latest", label: "Latest" },
-    { href: "/popular", label: "Popular" },
     { href: "/manhwa", label: "Manhwa", icon: <Zap className="w-3.5 h-3.5 text-primary" /> },
     { href: "/rankings", label: "Rankings", icon: <BarChart2 className="w-3.5 h-3.5 text-amber-400" /> },
     { href: "/search", label: "Browse", icon: <Compass className="w-3.5 h-3.5" /> },
   ];
+
+  // Manga section links
+  const mangaLinks = [
+    { href: "/manga", label: "Manga", icon: <BookOpen className="w-3.5 h-3.5 text-primary" /> },
+  ];
+
+  const navLinks = inManga ? mangaLinks : manhwaLinks;
+
+  // The cross-section link shown in nav/hamburger
+  const crossLink = inManga
+    ? { href: "/", label: "Manhwa", icon: <Zap className="w-3.5 h-3.5 text-orange-400" /> }
+    : { href: "/manga", label: "Manga", icon: <BookOpen className="w-3.5 h-3.5 text-blue-400" /> };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-[#0A0A0F]/95 backdrop-blur-md border-b border-white/[0.06]" data-testid="navbar">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-14">
           <div className="flex items-center gap-6">
-            <Link href="/" className="flex items-center gap-2 group shrink-0" data-testid="link-logo">
+            <Link href={inManga ? "/manga" : "/"} className="flex items-center gap-2 group shrink-0" data-testid="link-logo">
               <img src={logoPath} alt="ShiroScans" className="w-7 h-7 rounded-full" />
               <span className="text-base font-extrabold text-white tracking-tight group-hover:text-primary transition-colors">
                 ShiroScans
@@ -142,11 +186,19 @@ export default function Navbar() {
                   {link.label}
                 </Link>
               ))}
+              {/* Cross-section link */}
+              <Link
+                href={crossLink.href}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-[#9CA3AF] hover:text-white hover:bg-white/5 transition-colors border border-white/[0.06] ml-1"
+              >
+                {crossLink.icon}
+                {crossLink.label}
+              </Link>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Desktop search with suggestions */}
+            {/* Desktop search */}
             <form onSubmit={handleSearch} className="hidden md:flex items-center relative" data-testid="form-search">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
@@ -156,15 +208,14 @@ export default function Navbar() {
                   onChange={(e) => handleSearchInput(e.target.value)}
                   onFocus={() => searchQuery && setShowSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                  placeholder="Search..."
+                  placeholder={inManga ? "Search manga..." : "Search manhwa..."}
                   autoComplete="off"
                   className="bg-white/5 border border-white/[0.08] rounded-lg pl-8 pr-3 py-1.5 text-sm text-white placeholder-[#9CA3AF] focus:outline-none focus:border-primary/40 focus:bg-white/8 w-40 transition-all focus:w-64"
                   data-testid="input-search"
                 />
               </div>
 
-              {/* Suggestions dropdown */}
-              {showSuggestions && (searchQuery.trim()) && (
+              {showSuggestions && searchQuery.trim() && (
                 <div className="absolute top-full right-0 mt-1.5 w-72 bg-[#13131f] border border-white/[0.08] rounded-xl shadow-2xl z-50 overflow-hidden">
                   {suggestLoading && suggestions.length === 0 ? (
                     <div className="flex items-center gap-2 px-4 py-3 text-white/40 text-xs">
@@ -181,7 +232,14 @@ export default function Navbar() {
                         >
                           <div className="w-7 h-9 rounded overflow-hidden shrink-0 bg-[#1a1a2e]">
                             {item.coverImage ? (
-                              <img src={proxyImage(item.coverImage)} alt="" className="w-full h-full object-cover" loading="lazy" />
+                              <img
+                                src={item.provider === "mangaplus"
+                                  ? `${BASE}/api/mangaplus/image?url=${encodeURIComponent(item.coverImage)}`
+                                  : proxyImage(item.coverImage)}
+                                alt=""
+                                className="w-full h-full object-cover"
+                                loading="lazy"
+                              />
                             ) : null}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -190,6 +248,8 @@ export default function Navbar() {
                           </div>
                           {item.provider === "asurascans" ? (
                             <Zap className="w-3 h-3 text-primary/60 shrink-0" />
+                          ) : item.provider === "mangaplus" ? (
+                            <BookOpen className="w-3 h-3 text-blue-400/60 shrink-0" />
                           ) : (
                             <BookOpen className="w-3 h-3 text-primary/40 shrink-0" />
                           )}
@@ -226,36 +286,25 @@ export default function Navbar() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44 bg-card border-white/10">
                   <DropdownMenuItem asChild>
-                    <Link href="/profile" className="flex items-center gap-2 cursor-pointer" data-testid="link-profile">
-                      <User className="w-3.5 h-3.5" /> Profile
-                    </Link>
+                    <Link href="/profile" className="flex items-center gap-2 cursor-pointer"><User className="w-3.5 h-3.5" /> Profile</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/bookmarks" className="flex items-center gap-2 cursor-pointer" data-testid="link-bookmarks">
-                      <BookmarkCheck className="w-3.5 h-3.5" /> Bookmarks
-                    </Link>
+                    <Link href="/bookmarks" className="flex items-center gap-2 cursor-pointer"><BookmarkCheck className="w-3.5 h-3.5" /> Bookmarks</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/history" className="flex items-center gap-2 cursor-pointer" data-testid="link-history">
-                      <Clock className="w-3.5 h-3.5" /> History
-                    </Link>
+                    <Link href="/history" className="flex items-center gap-2 cursor-pointer"><Clock className="w-3.5 h-3.5" /> History</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/favourites" className="flex items-center gap-2 cursor-pointer" data-testid="link-favourites">
-                      <Heart className="w-3.5 h-3.5" /> Favourites
-                    </Link>
+                    <Link href="/favourites" className="flex items-center gap-2 cursor-pointer"><Heart className="w-3.5 h-3.5" /> Favourites</Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator className="bg-white/10" />
                   <DropdownMenuItem asChild>
-                    <Link href="/settings" className="flex items-center gap-2 cursor-pointer" data-testid="link-settings">
-                      <Settings className="w-3.5 h-3.5" /> Settings
-                    </Link>
+                    <Link href="/settings" className="flex items-center gap-2 cursor-pointer"><Settings className="w-3.5 h-3.5" /> Settings</Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator className="bg-white/10" />
                   <DropdownMenuItem
                     className="flex items-center gap-2 text-destructive cursor-pointer"
                     onClick={() => logoutMutation.mutate(undefined)}
-                    data-testid="button-logout"
                   >
                     <LogOut className="w-3.5 h-3.5" /> Logout
                   </DropdownMenuItem>
@@ -264,10 +313,10 @@ export default function Navbar() {
             ) : (
               <div className="hidden md:flex items-center gap-1.5">
                 <Button variant="ghost" size="sm" asChild className="text-[#9CA3AF] hover:text-white h-8 px-3 text-xs">
-                  <Link href="/login" data-testid="link-login">Login</Link>
+                  <Link href="/login">Login</Link>
                 </Button>
                 <Button size="sm" asChild className="bg-primary hover:bg-primary/90 h-8 px-3 text-xs font-semibold">
-                  <Link href="/register" data-testid="link-register">Register</Link>
+                  <Link href="/register">Register</Link>
                 </Button>
               </div>
             )}
@@ -286,20 +335,20 @@ export default function Navbar() {
       {mobileOpen && (
         <div className="md:hidden border-t border-white/[0.06] bg-[#0A0A0F]/98 backdrop-blur-md">
           <div className="px-4 py-4 space-y-1">
-            <form onSubmit={handleSearch} className="flex mb-3" data-testid="form-search-mobile">
+            <form onSubmit={handleSearch} className="flex mb-3">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9CA3AF]" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => handleSearchInput(e.target.value)}
-                  placeholder="Search manga & manhwa..."
+                  placeholder={inManga ? "Search manga..." : "Search manhwa..."}
                   autoComplete="off"
                   className="w-full bg-white/5 border border-white/[0.08] rounded-lg pl-9 pr-4 py-2 text-sm text-white placeholder-[#9CA3AF] focus:outline-none focus:border-primary/40"
-                  data-testid="input-search-mobile"
                 />
               </div>
             </form>
+
             {navLinks.map((link) => (
               <Link
                 key={link.href}
@@ -309,10 +358,21 @@ export default function Navbar() {
                 }`}
                 onClick={() => setMobileOpen(false)}
               >
-                {link.icon}
-                {link.label}
+                {link.icon}{link.label}
               </Link>
             ))}
+
+            {/* Cross-section link in mobile menu */}
+            <div className="h-px bg-white/[0.06] my-1" />
+            <Link
+              href={crossLink.href}
+              className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-colors border border-white/[0.08]"
+              onClick={() => setMobileOpen(false)}
+            >
+              {crossLink.icon}
+              {inManga ? "Switch to Manhwa" : "Switch to Manga"}
+            </Link>
+
             {user ? (
               <>
                 <div className="h-px bg-white/[0.06] my-2" />

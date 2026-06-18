@@ -21,6 +21,9 @@ import ManhwaPage from "@/pages/Manhwa";
 import AsuraSeriesDetailPage from "@/pages/AsuraSeriesDetail";
 import AsuraReaderPage from "@/pages/AsuraReader";
 import RankingsPage from "@/pages/Rankings";
+import MangaHomePage from "@/pages/MangaHome";
+import MangaSeriesDetailPage from "@/pages/MangaSeriesDetail";
+import MangaReaderPage from "@/pages/MangaReader";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -53,6 +56,8 @@ function LayoutedRoutes() {
         <Route path="/login" component={LoginPage} />
         <Route path="/register" component={RegisterPage} />
         <Route path="/manhwa" component={ManhwaPage} />
+        <Route path="/manga" component={MangaHomePage} />
+        <Route path="/manga/series/:titleId" component={MangaSeriesDetailPage} />
         <Route path="/asura/series/:slug" component={AsuraSeriesDetailPage} />
         <Route path="/rankings" component={RankingsPage} />
         <Route component={NotFound} />
@@ -69,6 +74,7 @@ function App() {
           <Switch>
             <Route path="/read/:provider/:seriesId/:chapterId" component={ReaderPage} />
             <Route path="/asura/read/:slug/:chapterId" component={AsuraReaderPage} />
+            <Route path="/manga/read/:titleId/:chapterId" component={MangaReaderPage} />
             <Route component={LayoutedRoutes} />
           </Switch>
         </WouterRouter>

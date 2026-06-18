@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "wouter";
-import { Search, Zap, TrendingUp, Clock, Filter, X } from "lucide-react";
+import { Search, Zap, TrendingUp, Clock, Filter, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,6 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function proxyImage(url: string): string {
   if (!url) return "";
   if (!url.startsWith("http")) return url;
-  if (url.includes("uploads.mangadex.org")) return url;
   return `${BASE}/api/proxy-image?url=${encodeURIComponent(url)}`;
 }
 
@@ -67,16 +66,15 @@ function SeriesCard({ item }: { item: AsuraSeriesPreview }) {
             <span key={g} className="inline-block text-[9px] bg-primary/80 text-white px-1.5 py-0.5 rounded mr-1 mb-1">{g}</span>
           ))}
         </div>
-        <div className="absolute top-2 left-2">
-          <span className="text-[8px] font-bold bg-primary text-white px-1.5 py-0.5 rounded-full">AS</span>
-        </div>
+        {item.latestChapter && (
+          <div className="absolute top-2 right-2 text-[9px] font-bold bg-black/70 text-white/80 px-1.5 py-0.5 rounded">
+            Ch.{item.latestChapter}
+          </div>
+        )}
       </div>
       <div className="mt-2 px-0.5">
         <h3 className="text-sm font-bold text-white/90 group-hover:text-primary transition-colors line-clamp-2 leading-snug">{item.title}</h3>
         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded mt-1 inline-block ${statusColor}`}>{item.status}</span>
-        {item.latestChapter && (
-          <p className="text-[11px] text-white/40 mt-0.5">Ch. {item.latestChapter}</p>
-        )}
       </div>
     </Link>
   );
@@ -114,7 +112,7 @@ export default function ManhwaPage() {
     fetch(`${BASE}/api/asurascans/home`)
       .then((r) => r.ok ? r.json() : Promise.reject(r))
       .then((d: HomeData) => setHomeData(d))
-      .catch(() => toast({ description: "Failed to load AsuraScans content", variant: "destructive" }))
+      .catch(() => toast({ description: "Failed to load content", variant: "destructive" }))
       .finally(() => setHomeLoading(false));
   }, []);
 
@@ -161,14 +159,14 @@ export default function ManhwaPage() {
           </div>
           <div>
             <h1 className="text-xl font-black text-white tracking-tight">Manhwa</h1>
-            <p className="text-xs text-white/40">From AsuraScans</p>
+            <p className="text-xs text-white/40">Explore manhwa series</p>
           </div>
         </div>
 
         <div className="flex gap-1 mt-4 bg-white/[0.05] rounded-lg p-1">
           {([
             { id: "home", label: "Featured", icon: <Zap className="w-3.5 h-3.5" /> },
-            { id: "browse", label: browseData ? `Browse (${browseData.total})` : "Browse", icon: <TrendingUp className="w-3.5 h-3.5" /> },
+            { id: "browse", label: "Browse", icon: <TrendingUp className="w-3.5 h-3.5" /> },
             { id: "search", label: "Search", icon: <Search className="w-3.5 h-3.5" /> },
           ] as { id: TabType; label: string; icon: React.ReactNode }[]).map(({ id, label, icon }) => (
             <button
@@ -183,7 +181,6 @@ export default function ManhwaPage() {
       </div>
 
       <div className="max-w-2xl mx-auto px-4">
-        {/* HOME TAB */}
         {tab === "home" && (
           <div className="space-y-8 pb-8">
             <section>
@@ -224,7 +221,6 @@ export default function ManhwaPage() {
           </div>
         )}
 
-        {/* BROWSE TAB */}
         {tab === "browse" && (
           <div className="pb-8">
             <div className="flex items-center gap-2 py-3 mb-2">
@@ -291,16 +287,29 @@ export default function ManhwaPage() {
             </div>
 
             {browseData && (
-              <div className="flex justify-center gap-2 mt-6">
-                <Button size="sm" variant="outline" disabled={browsePage === 1} onClick={() => setBrowsePage((p) => p - 1)} className="border-white/10 text-white/60 bg-transparent h-8 px-4">Prev</Button>
-                <span className="flex items-center px-3 text-sm text-white/40">Page {browsePage}</span>
-                <Button size="sm" variant="outline" disabled={!browseData.hasMore} onClick={() => setBrowsePage((p) => p + 1)} className="border-white/10 text-white/60 bg-transparent h-8 px-4">Next</Button>
+              <div className="flex items-center justify-center gap-3 mt-6">
+                <button
+                  disabled={browsePage === 1}
+                  onClick={() => { setBrowsePage((p) => p - 1); window.scrollTo(0, 0); }}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold border transition-all ${browsePage === 1 ? "border-white/5 text-white/20 cursor-not-allowed" : "border-white/10 text-white/70 hover:text-white hover:border-white/30 hover:bg-white/[0.04]"}`}
+                >
+                  <ChevronLeft className="w-4 h-4" /> Prev
+                </button>
+                <span className="flex items-center px-3 text-sm text-white/40 font-medium">
+                  Page {browsePage}
+                </span>
+                <button
+                  disabled={!browseData.hasMore}
+                  onClick={() => { setBrowsePage((p) => p + 1); window.scrollTo(0, 0); }}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold border transition-all ${!browseData.hasMore ? "border-white/5 text-white/20 cursor-not-allowed" : "border-primary/40 text-primary hover:bg-primary/10 hover:border-primary/60"}`}
+                >
+                  Next <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
             )}
           </div>
         )}
 
-        {/* SEARCH TAB */}
         {tab === "search" && (
           <div className="pb-8">
             <form onSubmit={handleSearch} className="flex gap-2 py-3 mb-4">
@@ -309,7 +318,7 @@ export default function ManhwaPage() {
                 <Input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search manhwa on AsuraScans..."
+                  placeholder="Search manhwa..."
                   className="pl-9 bg-[#1a1a2e] border-white/10 text-white placeholder:text-white/30 focus:border-primary/50"
                 />
               </div>
@@ -337,7 +346,7 @@ export default function ManhwaPage() {
             {!searchQuery && (
               <div className="text-center py-12 text-white/30">
                 <Search className="w-10 h-10 mx-auto mb-3 opacity-20" />
-                <p className="text-sm">Search across AsuraScans</p>
+                <p className="text-sm">Search manhwa series</p>
               </div>
             )}
           </div>

@@ -10,6 +10,8 @@ import profileRouter from "./profile";
 import asurascansRouter from "./asurascans";
 import ratingsRouter from "./ratings";
 import commentsRouter from "./comments";
+import mangaplusRouter from "./mangaplus";
+import mangadexRouter from "./mangadex";
 
 const router: IRouter = Router();
 
@@ -24,5 +26,7 @@ router.use(profileRouter);
 router.use(asurascansRouter);
 router.use(ratingsRouter);
 router.use(commentsRouter);
+router.use(mangaplusRouter);
+router.use(mangadexRouter);
 
 export default router;
