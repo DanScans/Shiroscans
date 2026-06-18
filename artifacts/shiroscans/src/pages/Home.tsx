@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { Link } from "wouter";
-import { ChevronRight, BookOpen, TrendingUp, Clock, Flame } from "lucide-react";
+import { ChevronRight, BookOpen, TrendingUp, Clock, Zap } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -22,7 +22,7 @@ function relativeTime(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString();
 }
 
-interface FlameItem {
+interface AsuraItem {
   id: string;
   title: string;
   coverUrl: string;
@@ -44,10 +44,10 @@ interface MangaItem {
   isNew?: boolean;
 }
 
-function FlameCard({ item, size = "sm" }: { item: FlameItem; size?: "sm" | "lg" }) {
+function AsuraCard({ item, size = "sm" }: { item: AsuraItem; size?: "sm" | "lg" }) {
   const [imgError, setImgError] = useState(false);
   return (
-    <Link href={`/flame/series/${encodeURIComponent(item.id)}`} className="group block">
+    <Link href={`/asura/series/${encodeURIComponent(item.id)}`} className="group block">
       <div
         className="relative rounded-xl overflow-hidden bg-[#13131f] shadow-lg group-hover:shadow-primary/10 transition-all duration-300 group-hover:scale-[1.02]"
         style={{ aspectRatio: "2/3" }}
@@ -62,7 +62,7 @@ function FlameCard({ item, size = "sm" }: { item: FlameItem; size?: "sm" | "lg" 
           />
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-[#2a1a2e] to-[#1a1a2e] flex items-center justify-center">
-            <Flame className="w-6 h-6 text-orange-400/20" />
+            <Zap className="w-6 h-6 text-primary/20" />
           </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
@@ -129,7 +129,7 @@ function SkeletonCard() {
   );
 }
 
-function HeroCarousel({ items }: { items: FlameItem[] }) {
+function HeroCarousel({ items }: { items: AsuraItem[] }) {
   const [idx, setIdx] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
@@ -162,7 +162,7 @@ function HeroCarousel({ items }: { items: FlameItem[] }) {
               onClick={() => offset !== 0 && setIdx(i)}
             >
               <Link
-                href={offset === 0 ? `/flame/series/${encodeURIComponent(item.id)}` : "#"}
+                href={offset === 0 ? `/asura/series/${encodeURIComponent(item.id)}` : "#"}
                 onClick={(e) => { if (offset !== 0) e.preventDefault(); }}
                 className="block w-full"
               >
@@ -170,7 +170,7 @@ function HeroCarousel({ items }: { items: FlameItem[] }) {
                   {item.coverUrl ? (
                     <img src={proxyImage(item.coverUrl)} alt={item.title} className="w-full h-full object-cover" loading="eager" />
                   ) : (
-                    <div className="w-full h-full bg-[#1a1a2e] flex items-center justify-center"><Flame className="w-8 h-8 text-orange-400/20" /></div>
+                    <div className="w-full h-full bg-[#1a1a2e] flex items-center justify-center"><Zap className="w-8 h-8 text-primary/20" /></div>
                   )}
                 </div>
               </Link>
@@ -179,7 +179,7 @@ function HeroCarousel({ items }: { items: FlameItem[] }) {
         })}
       </div>
       <div className="text-center pt-2 pb-4 px-6">
-        <Link href={`/flame/series/${encodeURIComponent(active.id)}`}>
+        <Link href={`/asura/series/${encodeURIComponent(active.id)}`}>
           <h2 className="text-white font-black text-base leading-tight line-clamp-1 hover:text-primary transition-colors">{active.title}</h2>
         </Link>
         <div className="flex items-center justify-center gap-1.5 mt-2">
@@ -193,17 +193,17 @@ function HeroCarousel({ items }: { items: FlameItem[] }) {
 }
 
 export default function HomePage() {
-  const [flameData, setFlameData] = useState<{ featured: FlameItem[]; popular: FlameItem[]; latest: FlameItem[] } | null>(null);
-  const [flameLoading, setFlameLoading] = useState(true);
+  const [asuraData, setAsuraData] = useState<{ featured: AsuraItem[]; popular: AsuraItem[]; latest: AsuraItem[] } | null>(null);
+  const [asuraLoading, setAsuraLoading] = useState(true);
   const [mangaLatest, setMangaLatest] = useState<MangaItem[]>([]);
   const [mangaLoading, setMangaLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${BASE}/api/flamecomics/home`)
+    fetch(`${BASE}/api/asurascans/home`)
       .then((r) => r.ok ? r.json() : Promise.reject(r))
-      .then((d) => setFlameData(d))
+      .then((d) => setAsuraData(d))
       .catch(() => {})
-      .finally(() => setFlameLoading(false));
+      .finally(() => setAsuraLoading(false));
 
     fetch(`${BASE}/api/manga/home`)
       .then((r) => r.ok ? r.json() : Promise.reject(r))
@@ -212,13 +212,13 @@ export default function HomePage() {
       .finally(() => setMangaLoading(false));
   }, []);
 
-  const featured = flameData?.featured ?? [];
-  const popular = flameData?.popular ?? [];
-  const latest = flameData?.latest ?? [];
+  const featured = asuraData?.featured ?? [];
+  const popular = asuraData?.popular ?? [];
+  const latest = asuraData?.latest ?? [];
 
   return (
     <div className="bg-[#07070d] min-h-screen">
-      {flameLoading ? (
+      {asuraLoading ? (
         <div className="relative overflow-hidden bg-[#07070d]" style={{ height: "300px" }}>
           <div className="absolute inset-0 flex items-center justify-center gap-3">
             <Skeleton className="rounded-2xl bg-[#13131f] opacity-40" style={{ width: "min(42vw, 180px)", aspectRatio: "2/3" }} />
@@ -245,9 +245,9 @@ export default function HomePage() {
             </Link>
           </div>
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-            {flameLoading
+            {asuraLoading
               ? Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)
-              : popular.slice(0, 8).map((item) => <FlameCard key={item.id} item={item} size="lg" />)
+              : popular.slice(0, 8).map((item) => <AsuraCard key={item.id} item={item} size="lg" />)
             }
           </div>
         </section>
@@ -263,9 +263,9 @@ export default function HomePage() {
             </Link>
           </div>
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-            {flameLoading
+            {asuraLoading
               ? Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)
-              : latest.slice(0, 8).map((item) => <FlameCard key={item.id} item={item} />)
+              : latest.slice(0, 8).map((item) => <AsuraCard key={item.id} item={item} />)
             }
           </div>
         </section>

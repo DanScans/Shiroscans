@@ -18,8 +18,8 @@ import SettingsPage from "@/pages/Settings";
 import LoginPage from "@/pages/Login";
 import RegisterPage from "@/pages/Register";
 import ManhwaPage from "@/pages/Manhwa";
-import FlameSeriesDetailPage from "@/pages/FlameSeriesDetail";
-import FlameReaderPage from "@/pages/FlameReader";
+import AsuraSeriesDetailPage from "@/pages/AsuraSeriesDetail";
+import AsuraReaderPage from "@/pages/AsuraReader";
 import RankingsPage from "@/pages/Rankings";
 import NotFound from "@/pages/not-found";
 
@@ -53,7 +53,7 @@ function LayoutedRoutes() {
         <Route path="/login" component={LoginPage} />
         <Route path="/register" component={RegisterPage} />
         <Route path="/manhwa" component={ManhwaPage} />
-        <Route path="/flame/series/:id" component={FlameSeriesDetailPage} />
+        <Route path="/asura/series/:slug" component={AsuraSeriesDetailPage} />
         <Route path="/rankings" component={RankingsPage} />
         <Route component={NotFound} />
       </Switch>
@@ -68,7 +68,7 @@ function App() {
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Switch>
             <Route path="/read/:provider/:seriesId/:chapterId" component={ReaderPage} />
-            <Route path="/flame/read/:seriesId/:chapterId" component={FlameReaderPage} />
+            <Route path="/asura/read/:slug/:chapterId" component={AsuraReaderPage} />
             <Route component={LayoutedRoutes} />
           </Switch>
         </WouterRouter>

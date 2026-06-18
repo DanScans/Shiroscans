@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
-import { Search as SearchIcon, X, Loader2, Flame, BookOpen } from "lucide-react";
+import { Search as SearchIcon, X, Loader2, Zap, BookOpen } from "lucide-react";
 import { Link } from "wouter";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -32,9 +32,9 @@ interface SuggestionItem {
 
 function ResultCard({ item }: { item: SearchItem }) {
   const [imgError, setImgError] = useState(false);
-  const isFlame = item.provider === "flamecomics";
-  const href = isFlame
-    ? `/flame/series/${encodeURIComponent(item.id)}`
+  const isAsura = item.provider === "asurascans";
+  const href = isAsura
+    ? `/asura/series/${encodeURIComponent(item.id)}`
     : `/series/${item.provider}/${encodeURIComponent(item.id)}`;
 
   const typeColor =
@@ -44,7 +44,7 @@ function ResultCard({ item }: { item: SearchItem }) {
 
   return (
     <Link href={href} className="group flex gap-3 p-3 rounded-xl hover:bg-white/[0.04] transition-colors border border-transparent hover:border-white/[0.06]">
-      <div className="w-16 h-22 rounded-lg overflow-hidden shrink-0 bg-[#13131f]" style={{ height: "88px" }}>
+      <div className="w-16 rounded-lg overflow-hidden shrink-0 bg-[#13131f]" style={{ height: "88px" }}>
         {item.coverImage && !imgError ? (
           <img
             src={proxyImage(item.coverImage)}
@@ -55,7 +55,7 @@ function ResultCard({ item }: { item: SearchItem }) {
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            {isFlame ? <Flame className="w-5 h-5 text-orange-400/30" /> : <BookOpen className="w-5 h-5 text-primary/20" />}
+            {isAsura ? <Zap className="w-5 h-5 text-primary/30" /> : <BookOpen className="w-5 h-5 text-primary/20" />}
           </div>
         )}
       </div>
@@ -99,21 +99,21 @@ export default function SearchPage() {
     setSearching(true);
     Promise.all([
       fetch(`${BASE}/api/manga/search?q=${encodeURIComponent(q)}&provider=mangadex`).then((r) => r.ok ? r.json() : { items: [] }),
-      fetch(`${BASE}/api/flamecomics/search?q=${encodeURIComponent(q)}`).then((r) => r.ok ? r.json() : { results: [] }),
-    ]).then(([mangaData, flameData]) => {
+      fetch(`${BASE}/api/asurascans/search?q=${encodeURIComponent(q)}`).then((r) => r.ok ? r.json() : { results: [] }),
+    ]).then(([mangaData, asuraData]) => {
       const manga = (mangaData.items ?? []) as SearchItem[];
-      const flame = (flameData.results ?? []).map((item: any) => ({
+      const asura = (asuraData.results ?? []).map((item: any) => ({
         id: item.id,
         title: item.title,
         coverImage: item.coverUrl,
-        provider: "flamecomics",
+        provider: "asurascans",
         type: "Manhwa",
         status: item.status,
         genres: item.genres ?? [],
       })) as SearchItem[];
       const seen = new Set<string>();
       const merged: SearchItem[] = [];
-      for (const item of [...flame, ...manga]) {
+      for (const item of [...asura, ...manga]) {
         const key = item.title.toLowerCase().replace(/\s+/g, "");
         if (!seen.has(key)) { seen.add(key); merged.push(item); }
       }
@@ -145,19 +145,19 @@ export default function SearchPage() {
     suggestDebounce.current = setTimeout(() => {
       Promise.all([
         fetch(`${BASE}/api/manga/suggestions?q=${encodeURIComponent(val.trim())}`).then((r) => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
-        fetch(`${BASE}/api/flamecomics/search?q=${encodeURIComponent(val.trim())}`).then((r) => r.ok ? r.json() : { results: [] }).catch(() => ({ results: [] })),
-      ]).then(([mdxSuggest, flameSuggest]) => {
+        fetch(`${BASE}/api/asurascans/search?q=${encodeURIComponent(val.trim())}`).then((r) => r.ok ? r.json() : { results: [] }).catch(() => ({ results: [] })),
+      ]).then(([mdxSuggest, asuraSuggest]) => {
         const mdx = (mdxSuggest.items ?? []).slice(0, 4) as SuggestionItem[];
-        const flame = (flameSuggest.results ?? []).slice(0, 4).map((item: any) => ({
+        const asura = (asuraSuggest.results ?? []).slice(0, 4).map((item: any) => ({
           id: item.id,
           title: item.title,
           coverImage: item.coverUrl,
-          provider: "flamecomics",
+          provider: "asurascans",
           type: "Manhwa",
         })) as SuggestionItem[];
         const seen = new Set<string>();
         const merged: SuggestionItem[] = [];
-        for (const item of [...flame, ...mdx]) {
+        for (const item of [...asura, ...mdx]) {
           const key = item.title.toLowerCase().replace(/\s+/g, "");
           if (!seen.has(key)) { seen.add(key); merged.push(item); }
         }
@@ -191,7 +191,6 @@ export default function SearchPage() {
   return (
     <div className="bg-[#07070d] min-h-screen">
       <div className="max-w-2xl mx-auto px-4 py-5">
-        {/* Search bar */}
         <form onSubmit={handleSubmit} className="relative mb-6">
           <div className="relative">
             <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
@@ -214,7 +213,6 @@ export default function SearchPage() {
             )}
           </div>
 
-          {/* Suggestions dropdown */}
           {showSuggestions && query.trim() && (
             <div className="absolute top-full left-0 right-0 mt-1.5 bg-[#13131f] border border-white/[0.08] rounded-2xl shadow-2xl z-50 overflow-hidden">
               {suggestLoading && suggestions.length === 0 ? (
@@ -224,9 +222,9 @@ export default function SearchPage() {
               ) : suggestions.length > 0 ? (
                 <div>
                   {suggestions.map((item) => {
-                    const isFlame = item.provider === "flamecomics";
-                    const href = isFlame
-                      ? `/flame/series/${encodeURIComponent(item.id)}`
+                    const isAsura = item.provider === "asurascans";
+                    const href = isAsura
+                      ? `/asura/series/${encodeURIComponent(item.id)}`
                       : `/series/${item.provider}/${encodeURIComponent(item.id)}`;
                     return (
                       <Link
@@ -244,7 +242,7 @@ export default function SearchPage() {
                           <p className="text-sm text-white/90 font-semibold line-clamp-1">{item.title}</p>
                           <p className="text-[10px] text-white/30 mt-0.5">{item.type ?? "—"}</p>
                         </div>
-                        {isFlame && <Flame className="w-3 h-3 text-orange-400/60 shrink-0" />}
+                        {isAsura && <Zap className="w-3 h-3 text-primary/60 shrink-0" />}
                       </Link>
                     );
                   })}
@@ -263,7 +261,6 @@ export default function SearchPage() {
           )}
         </form>
 
-        {/* Results */}
         {searching ? (
           <div className="flex items-center justify-center gap-2 py-16 text-white/40">
             <Loader2 className="w-5 h-5 animate-spin" />

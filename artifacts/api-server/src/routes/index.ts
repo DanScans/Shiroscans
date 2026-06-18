@@ -7,7 +7,7 @@ import historyRouter from "./history";
 import reactionsRouter from "./reactions";
 import favouritesRouter from "./favourites";
 import profileRouter from "./profile";
-import flamecomicsRouter from "./flamecomics";
+import asurascansRouter from "./asurascans";
 import ratingsRouter from "./ratings";
 import commentsRouter from "./comments";
 
@@ -21,7 +21,7 @@ router.use(historyRouter);
 router.use(reactionsRouter);
 router.use(favouritesRouter);
 router.use(profileRouter);
-router.use(flamecomicsRouter);
+router.use(asurascansRouter);
 router.use(ratingsRouter);
 router.use(commentsRouter);
 

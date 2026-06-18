@@ -310,7 +310,7 @@ function getScraperNameFromSource(source: string): string {
     weebcentral: "WeebCentral",
     mangago: "Mangago",
     mangakatana: "MangaKatana",
-    flamecomics: "FlameComics",
+    asurascans: "AsuraScans",
     thunderscans: "Thunderscans",
     "vortex-scans": "Vortex Scans",
     "raven-scans": "Raven Scans",
@@ -335,11 +335,11 @@ function getScraperNameFromSource(source: string): string {
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
-// GET /manga/sources — only MangaDex and FlameComics are supported
+// GET /manga/sources — MangaDex and AsuraScans
 router.get("/manga/sources", (_req, res): void => {
   res.json([
     { id: "mangadex", name: "MangaDex", status: "active", type: "aggregator" },
-    { id: "flamecomics", name: "FlameComics", status: "active", type: "scanlation" },
+    { id: "asurascans", name: "AsuraScans", status: "active", type: "scanlation" },
   ]);
 });
 
@@ -584,7 +584,7 @@ router.get("/manga/search", async (req, res): Promise<void> => {
       if (url.includes("webtoons.com")) return "webtoon";
       if (url.includes("vortexscans.org")) return "vortex-scans";
       if (url.includes("ravenscans.org")) return "raven-scans";
-      if (url.includes("flamecomics.xyz")) return "flamecomics";
+      if (url.includes("asurascans.com")) return "asurascans";
       if (url.includes("novelcool.com")) return "novelcool";
       if (url.includes("topmanhua.") || url.includes("manhuatop.")) return "topmanhua";
       if (url.includes("mangaloom.com")) return "mangaloom";
@@ -958,10 +958,10 @@ const PROXY_ALLOWED_HOSTS = new Set([
   // MangaKatana
   "mangakatana.com",
   "i.mangakatana.com",
-  // FlameComics
-  "flamecomics.xyz",
-  "flamecomics.me",
-  "cdn.flamecomics.xyz",
+  // AsuraScans CDN
+  "asurascans.com",
+  "cdn.asurascans.com",
+  "img.asurascans.com",
   // Thunderscans
   "api.thunderscans.com",
   "thunderscans.com",
@@ -1040,7 +1040,7 @@ router.get("/proxy-image", async (req, res): Promise<void> => {
   }
 
   try {
-    const referer = rawUrl.includes("flamecomics") ? "https://flamecomics.xyz/" :
+    const referer = rawUrl.includes("asurascans.com") ? "https://asurascans.com/" :
                     rawUrl.includes("asura") ? "https://asuracomic.net/" :
                     rawUrl.includes("weebcentral") ? "https://weebcentral.com/" :
                     rawUrl.includes("mangafire") ? "https://mangafire.to/" :

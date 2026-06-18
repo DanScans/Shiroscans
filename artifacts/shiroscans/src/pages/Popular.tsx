@@ -8,15 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 const PROVIDERS = [
   { value: "mangadex", label: "MangaDex" },
-  { value: "comix", label: "Comick" },
   { value: "asurascan", label: "AsuraScans" },
-  { value: "weebcentral", label: "WeebCentral" },
-  { value: "mangago", label: "Mangago" },
-  { value: "mangakatana", label: "MangaKatana" },
-  { value: "flamecomics", label: "FlameComics" },
-  { value: "thunderscans", label: "Thunderscans" },
-  { value: "vortex-scans", label: "Vortex Scans" },
-  { value: "raven-scans", label: "Raven Scans" },
 ];
 
 const TYPE_TABS = [

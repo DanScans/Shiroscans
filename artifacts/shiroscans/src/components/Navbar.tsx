@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Search, BookmarkCheck, Clock, Heart, User, Settings, LogOut, ChevronDown, Menu, X, Compass, Flame, BarChart2, Loader2, BookOpen } from "lucide-react";
+import { Search, BookmarkCheck, Clock, Heart, User, Settings, LogOut, ChevronDown, Menu, X, Compass, Zap, BarChart2, Loader2, BookOpen } from "lucide-react";
 import { useGetMe, useLogout, getGetMeQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import logoPath from "@assets/file_0000000028ec71f5bea7a576cf17a0af_1781485787252.png";
@@ -79,15 +79,15 @@ export default function Navbar() {
     suggestDebounce.current = setTimeout(() => {
       Promise.all([
         fetch(`${BASE}/api/manga/suggestions?q=${encodeURIComponent(val.trim())}`).then((r) => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
-        fetch(`${BASE}/api/flamecomics/search?q=${encodeURIComponent(val.trim())}`).then((r) => r.ok ? r.json() : { results: [] }).catch(() => ({ results: [] })),
-      ]).then(([mdxData, flameData]) => {
+        fetch(`${BASE}/api/asurascans/search?q=${encodeURIComponent(val.trim())}`).then((r) => r.ok ? r.json() : { results: [] }).catch(() => ({ results: [] })),
+      ]).then(([mdxData, asuraData]) => {
         const mdx = (mdxData.items ?? []).slice(0, 4) as SuggestionItem[];
-        const flame = ((flameData.results ?? []) as Array<{ id: string; title: string; coverUrl: string; genres: string[] }>)
+        const asura = ((asuraData.results ?? []) as Array<{ id: string; title: string; coverUrl: string; genres: string[] }>)
           .slice(0, 4)
-          .map((item) => ({ id: item.id, title: item.title, coverImage: item.coverUrl, provider: "flamecomics", type: "Manhwa" }));
+          .map((item) => ({ id: item.id, title: item.title, coverImage: item.coverUrl, provider: "asurascans", type: "Manhwa" }));
         const seen = new Set<string>();
         const merged: SuggestionItem[] = [];
-        for (const item of [...flame, ...mdx]) {
+        for (const item of [...asura, ...mdx]) {
           const key = item.title.toLowerCase().replace(/\s+/g, "");
           if (!seen.has(key)) { seen.add(key); merged.push(item); }
         }
@@ -99,8 +99,8 @@ export default function Navbar() {
   function goToSuggestion(item: SuggestionItem) {
     setShowSuggestions(false);
     setSearchQuery("");
-    const href = item.provider === "flamecomics"
-      ? `/flame/series/${encodeURIComponent(item.id)}`
+    const href = item.provider === "asurascans"
+      ? `/asura/series/${encodeURIComponent(item.id)}`
       : `/series/${item.provider}/${encodeURIComponent(item.id)}`;
     setLocation(href);
   }
@@ -109,7 +109,7 @@ export default function Navbar() {
     { href: "/", label: "Home" },
     { href: "/latest", label: "Latest" },
     { href: "/popular", label: "Popular" },
-    { href: "/manhwa", label: "Manhwa", icon: <Flame className="w-3.5 h-3.5 text-orange-400" /> },
+    { href: "/manhwa", label: "Manhwa", icon: <Zap className="w-3.5 h-3.5 text-primary" /> },
     { href: "/rankings", label: "Rankings", icon: <BarChart2 className="w-3.5 h-3.5 text-amber-400" /> },
     { href: "/search", label: "Browse", icon: <Compass className="w-3.5 h-3.5" /> },
   ];
@@ -188,8 +188,8 @@ export default function Navbar() {
                             <p className="text-xs text-white/90 font-semibold line-clamp-1">{item.title}</p>
                             <p className="text-[10px] text-white/30 mt-0.5">{item.type ?? "—"}</p>
                           </div>
-                          {item.provider === "flamecomics" ? (
-                            <Flame className="w-3 h-3 text-orange-400/60 shrink-0" />
+                          {item.provider === "asurascans" ? (
+                            <Zap className="w-3 h-3 text-primary/60 shrink-0" />
                           ) : (
                             <BookOpen className="w-3 h-3 text-primary/40 shrink-0" />
                           )}
