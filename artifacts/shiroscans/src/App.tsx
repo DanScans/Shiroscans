@@ -5,10 +5,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Layout from "@/components/Layout";
 import HomePage from "@/pages/Home";
-import LatestPage from "@/pages/Latest";
-import PopularPage from "@/pages/Popular";
-import SeriesPage from "@/pages/Series";
-import ReaderPage from "@/pages/Reader";
+import MangaFireSeriesDetailPage from "@/pages/MangaFireSeriesDetail";
+import MangaFireReaderPage from "@/pages/MangaFireReader";
+import BrowsePage from "@/pages/Browse";
 import SearchPage from "@/pages/Search";
 import BookmarksPage from "@/pages/Bookmarks";
 import HistoryPage from "@/pages/History";
@@ -17,13 +16,6 @@ import ProfilePage from "@/pages/Profile";
 import SettingsPage from "@/pages/Settings";
 import LoginPage from "@/pages/Login";
 import RegisterPage from "@/pages/Register";
-import ManhwaPage from "@/pages/Manhwa";
-import AsuraSeriesDetailPage from "@/pages/AsuraSeriesDetail";
-import AsuraReaderPage from "@/pages/AsuraReader";
-import RankingsPage from "@/pages/Rankings";
-import MangaHomePage from "@/pages/MangaHome";
-import MangaSeriesDetailPage from "@/pages/MangaSeriesDetail";
-import MangaReaderPage from "@/pages/MangaReader";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -44,10 +36,9 @@ function LayoutedRoutes() {
     <Layout>
       <Switch>
         <Route path="/" component={HomePage} />
-        <Route path="/latest" component={LatestPage} />
-        <Route path="/popular" component={PopularPage} />
+        <Route path="/series/:slug" component={MangaFireSeriesDetailPage} />
+        <Route path="/browse" component={BrowsePage} />
         <Route path="/search" component={SearchPage} />
-        <Route path="/series/:provider/:id" component={SeriesPage} />
         <Route path="/bookmarks" component={BookmarksPage} />
         <Route path="/history" component={HistoryPage} />
         <Route path="/favourites" component={FavouritesPage} />
@@ -55,11 +46,6 @@ function LayoutedRoutes() {
         <Route path="/settings" component={SettingsPage} />
         <Route path="/login" component={LoginPage} />
         <Route path="/register" component={RegisterPage} />
-        <Route path="/manhwa" component={ManhwaPage} />
-        <Route path="/manga" component={MangaHomePage} />
-        <Route path="/manga/series/:titleId" component={MangaSeriesDetailPage} />
-        <Route path="/asura/series/:slug" component={AsuraSeriesDetailPage} />
-        <Route path="/rankings" component={RankingsPage} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
@@ -72,9 +58,7 @@ function App() {
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Switch>
-            <Route path="/read/:provider/:seriesId/:chapterId" component={ReaderPage} />
-            <Route path="/asura/read/:slug/:chapterId" component={AsuraReaderPage} />
-            <Route path="/manga/read/:titleId/:chapterId" component={MangaReaderPage} />
+            <Route path="/read/:chapterId" component={MangaFireReaderPage} />
             <Route component={LayoutedRoutes} />
           </Switch>
         </WouterRouter>

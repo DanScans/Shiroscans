@@ -12,6 +12,7 @@ import ratingsRouter from "./ratings";
 import commentsRouter from "./comments";
 import mangaplusRouter from "./mangaplus";
 import mangadexRouter from "./mangadex";
+import mangafireRouter from "./mangafire";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(ratingsRouter);
 router.use(commentsRouter);
 router.use(mangaplusRouter);
 router.use(mangadexRouter);
+router.use(mangafireRouter);
 
 export default router;

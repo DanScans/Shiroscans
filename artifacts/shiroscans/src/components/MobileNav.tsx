@@ -3,7 +3,7 @@ import { Home, Bookmark, Search, User } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/", icon: Home, label: "Home" },
-  { href: "/search", icon: Search, label: "Search" },
+  { href: "/browse", icon: Search, label: "Browse" },
   { href: "/bookmarks", icon: Bookmark, label: "Bookmarks" },
   { href: "/profile", icon: User, label: "Profile" },
 ];
@@ -29,9 +29,7 @@ export default function MobileNav() {
                 className={`w-[22px] h-[22px] transition-colors ${active ? "text-primary" : "text-white/30"}`}
                 strokeWidth={active ? 2.5 : 1.8}
               />
-              <span
-                className={`text-[10px] font-semibold tracking-tight transition-colors ${active ? "text-primary" : "text-white/25"}`}
-              >
+              <span className={`text-[10px] font-semibold tracking-tight transition-colors ${active ? "text-primary" : "text-white/25"}`}>
                 {label}
               </span>
             </Link>
