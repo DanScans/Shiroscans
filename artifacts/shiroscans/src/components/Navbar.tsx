@@ -19,6 +19,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function proxyImage(url: string): string {
   if (!url) return "";
   if (!url.startsWith("http://") && !url.startsWith("https://")) return url;
+  if (url.includes("uploads.mangadex.org")) return url;
   return `${BASE}/api/proxy-image?url=${encodeURIComponent(url)}`;
 }
 

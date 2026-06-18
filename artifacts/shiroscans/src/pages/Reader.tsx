@@ -5,6 +5,7 @@ const _BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function proxyImage(url: string): string {
   if (!url) return "";
   if (!url.startsWith("http")) return url;
+  if (url.includes("uploads.mangadex.org")) return url;
   return `${_BASE}/api/proxy-image?url=${encodeURIComponent(url)}`;
 }
 import { ChevronLeft, ChevronRight, Home, MessageSquare, Heart, Flame, Star, ThumbsUp, Frown, List } from "lucide-react";

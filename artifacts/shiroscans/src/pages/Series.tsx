@@ -16,6 +16,14 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+function proxyImage(url: string): string {
+  if (!url) return "";
+  if (!url.startsWith("http://") && !url.startsWith("https://")) return url;
+  if (url.includes("uploads.mangadex.org")) return url;
+  return `${BASE}/api/proxy-image?url=${encodeURIComponent(url)}`;
+}
+
 export default function SeriesPage() {
   const { provider, id } = useParams<{ provider: string; id: string }>();
   const [showAllChapters, setShowAllChapters] = useState(false);
@@ -104,7 +112,7 @@ export default function SeriesPage() {
           <div className="shrink-0">
             <div className="w-40 md:w-48 rounded-xl overflow-hidden shadow-2xl shadow-black/50 border border-white/10">
               {series.coverImage ? (
-                <img src={series.coverImage} alt={series.title} className="w-full aspect-[2/3] object-cover" />
+                <img src={proxyImage(series.coverImage)} alt={series.title} className="w-full aspect-[2/3] object-cover" />
               ) : (
                 <div className="w-full aspect-[2/3] bg-card flex items-center justify-center">
                   <BookOpen className="w-10 h-10 text-muted-foreground/30" />

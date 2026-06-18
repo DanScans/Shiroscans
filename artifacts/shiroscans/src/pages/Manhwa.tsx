@@ -12,6 +12,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function proxyImage(url: string): string {
   if (!url) return "";
   if (!url.startsWith("http")) return url;
+  if (url.includes("uploads.mangadex.org")) return url;
   return `${BASE}/api/proxy-image?url=${encodeURIComponent(url)}`;
 }
 
@@ -133,6 +134,11 @@ export default function ManhwaPage() {
       .finally(() => setBrowseLoading(false));
   }, []);
 
+  // Pre-load browse data on mount so switching to Browse tab is instant
+  useEffect(() => {
+    fetchBrowse(1, "", "");
+  }, [fetchBrowse]);
+
   useEffect(() => {
     if (tab === "browse") fetchBrowse(browsePage, browseGenre, browseStatus);
   }, [tab, browsePage, browseGenre, browseStatus, fetchBrowse]);
@@ -169,7 +175,7 @@ export default function ManhwaPage() {
         <div className="flex gap-1 mt-4 bg-white/[0.05] rounded-lg p-1">
           {([
             { id: "home", label: "Featured", icon: <Flame className="w-3.5 h-3.5" /> },
-            { id: "browse", label: "Browse", icon: <TrendingUp className="w-3.5 h-3.5" /> },
+            { id: "browse", label: browseData ? `Browse (${browseData.total})` : "Browse", icon: <TrendingUp className="w-3.5 h-3.5" /> },
             { id: "search", label: "Search", icon: <Search className="w-3.5 h-3.5" /> },
           ] as { id: TabType; label: string; icon: React.ReactNode }[]).map(({ id, label, icon }) => (
             <button
@@ -194,8 +200,8 @@ export default function ManhwaPage() {
               </h2>
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                 {homeLoading
-                  ? Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
-                  : (homeData?.featured ?? []).slice(0, 6).map((item) => <SeriesCard key={item.id} item={item} />)
+                  ? Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)
+                  : (homeData?.featured ?? []).map((item) => <SeriesCard key={item.id} item={item} />)
                 }
               </div>
             </section>
@@ -207,8 +213,8 @@ export default function ManhwaPage() {
               </h2>
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                 {homeLoading
-                  ? Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)
-                  : (homeData?.popular ?? []).slice(0, 8).map((item) => <SeriesCard key={item.id} item={item} />)
+                  ? Array.from({ length: 12 }).map((_, i) => <SkeletonCard key={i} />)
+                  : (homeData?.popular ?? []).map((item) => <SeriesCard key={item.id} item={item} />)
                 }
               </div>
             </section>
@@ -220,8 +226,8 @@ export default function ManhwaPage() {
               </h2>
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                 {homeLoading
-                  ? Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)
-                  : (homeData?.latest ?? []).slice(0, 8).map((item) => <SeriesCard key={item.id} item={item} />)
+                  ? Array.from({ length: 12 }).map((_, i) => <SkeletonCard key={i} />)
+                  : (homeData?.latest ?? []).map((item) => <SeriesCard key={item.id} item={item} />)
                 }
               </div>
             </section>

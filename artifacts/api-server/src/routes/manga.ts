@@ -638,38 +638,67 @@ router.get("/manga/series/:provider/:id", async (req, res): Promise<void> => {
 
   if (safeProvider === "mangadex") {
     try {
-      const [mangaRes, feedRes] = await Promise.allSettled([
-        mdx<{ data: MdxManga }>(`/manga/${safeId}`, { "includes[]": ["cover_art", "author", "artist"] }),
-        mdx<{ data: MdxChapter[]; total: number }>(`/manga/${safeId}/feed`, {
-          limit: 500, "translatedLanguage[]": ["en"], "order[chapter]": "desc",
+      const result = await withCache(`mdx:series:${safeId}`, 30 * 60 * 1000, async () => {
+        const feedParams = {
+          limit: 500, "order[chapter]": "desc",
           "contentRating[]": ["safe", "suggestive", "erotica", "pornographic"],
-        }),
-      ]);
+        };
 
-      if (mangaRes.status === "rejected") { res.status(404).json({ error: "Series not found" }); return; }
+        // Parallel: manga info + first page of chapters (all languages — covers manga with no English)
+        const [m, firstFeed] = await Promise.all([
+          mdx<{ data: MdxManga }>(`/manga/${safeId}`, { "includes[]": ["cover_art", "author", "artist"] })
+            .then((r) => r.data),
+          mdx<{ data: MdxChapter[]; total: number }>(`/manga/${safeId}/feed`, feedParams),
+        ]);
 
-      const m = mangaRes.value.data;
-      const base = normalizeMdxManga(m, extractCoverFileName(m));
-      const altTitles: string[] = [];
-      (m.attributes.altTitles ?? []).forEach((t) => {
-        const val = t["en"] ?? t["ja-ro"] ?? Object.values(t)[0];
-        if (val && !altTitles.includes(val)) altTitles.push(val);
+        // If >500 chapters total, fetch remaining pages (capped at 1500 total = 3 pages)
+        let allChapters: MdxChapter[] = firstFeed.data;
+        if (firstFeed.total > 500) {
+          const extraPages = Math.min(Math.ceil((firstFeed.total - 500) / 500), 2);
+          const extras = await Promise.all(
+            Array.from({ length: extraPages }, (_, i) =>
+              mdx<{ data: MdxChapter[]; total: number }>(`/manga/${safeId}/feed`, {
+                ...feedParams, offset: 500 * (i + 1),
+              }).catch(() => ({ data: [] as MdxChapter[], total: 0 }))
+            )
+          );
+          for (const f of extras) allChapters = allChapters.concat(f.data);
+        }
+
+        const base = normalizeMdxManga(m, extractCoverFileName(m));
+        const altTitles: string[] = [];
+        (m.attributes.altTitles ?? []).forEach((t) => {
+          const val = t["en"] ?? t["ja-ro"] ?? Object.values(t)[0];
+          if (val && !altTitles.includes(val)) altTitles.push(val);
+        });
+        const authorRel = m.relationships.find((r) => r.type === "author");
+        const authorName = authorRel?.attributes?.["name"] as string | undefined;
+
+        // Deduplicate by chapter number — prefer English when multiple exist
+        const chapterMap = new Map<string, MdxChapter>();
+        for (const c of allChapters) {
+          const n = c.attributes.chapter ?? "0";
+          if (!chapterMap.has(n)) {
+            chapterMap.set(n, c);
+          } else if (c.attributes.translatedLanguage === "en") {
+            chapterMap.set(n, c); // Prefer English over other languages
+          }
+        }
+        const chapters = [...chapterMap.values()]
+          .sort((a, b) => parseFloat(b.attributes.chapter ?? "0") - parseFloat(a.attributes.chapter ?? "0"))
+          .map((c) => ({ id: c.id, number: c.attributes.chapter ?? "0", title: c.attributes.title ?? null, releasedAt: c.attributes.publishAt ?? null, views: null as null }));
+
+        const description = m.attributes.description?.["en"] ?? Object.values(m.attributes.description ?? {})[0] ?? null;
+
+        return {
+          id: m.id, title: base.title, coverImage: base.coverImage, bannerImage: null, provider: "mangadex",
+          type: base.type, status: base.status, rating: base.rating, description, genres: base.genres,
+          author: authorName ?? null, artist: null, chapters, totalChapters: chapters.length,
+          alternativeTitles: altTitles.slice(0, 5), serialization: null, updatedAt: null,
+        };
       });
-      const authorRel = m.relationships.find((r) => r.type === "author");
-      const authorName = authorRel?.attributes?.["name"] as string | undefined;
-      const chaptersRaw = feedRes.status === "fulfilled" ? feedRes.value.data : [];
-      const seenNums = new Set<string>();
-      const chapters = chaptersRaw
-        .filter((c) => { const n = c.attributes.chapter ?? "0"; if (seenNums.has(n)) return false; seenNums.add(n); return true; })
-        .map((c) => ({ id: c.id, number: c.attributes.chapter ?? "0", title: c.attributes.title ?? null, releasedAt: c.attributes.publishAt ?? null, views: null as null }));
-      const description = m.attributes.description?.["en"] ?? Object.values(m.attributes.description ?? {})[0] ?? null;
 
-      res.json({
-        id: m.id, title: base.title, coverImage: base.coverImage, bannerImage: null, provider: "mangadex",
-        type: base.type, status: base.status, rating: base.rating, description, genres: base.genres,
-        author: authorName ?? null, artist: null, chapters, totalChapters: chapters.length,
-        alternativeTitles: altTitles.slice(0, 5), serialization: null, updatedAt: null,
-      });
+      res.json(result);
     } catch (err) {
       req.log.error({ err, id: safeId }, "MangaDex series failed");
       res.status(404).json({ error: "Series not found" });
