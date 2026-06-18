@@ -492,19 +492,30 @@ router.get("/asurascans/search", async (req, res): Promise<void> => {
         `/browse?q=${encodeURIComponent(q)}`,
       ];
 
+      // Always load home data in parallel for cover enrichment
+      const homeDataPromise = fetchHomeData().catch(() => null);
+
       for (const p of searchPaths) {
         try {
           const html = await asuraFetch(p);
           const items = extractBrowseItems(html);
           const lower = q.toLowerCase();
-          const filtered = items.filter((i) => i.title.toLowerCase().includes(lower));
-          if (filtered.length > 0) return filtered;
-          if (items.length > 0) return items.slice(0, 20);
+          let candidates = items.filter((i) => i.title.toLowerCase().includes(lower));
+          if (candidates.length === 0 && items.length > 0) candidates = items.slice(0, 20);
+          if (candidates.length > 0) {
+            // Enrich missing cover URLs from home data
+            const homeData = await homeDataPromise;
+            if (homeData) {
+              const homeMap = new Map([...homeData.featured, ...homeData.popular, ...homeData.latest].map((i) => [i.id, i]));
+              return candidates.map((item) => item.coverUrl ? item : { ...item, coverUrl: homeMap.get(item.id)?.coverUrl ?? "" });
+            }
+            return candidates;
+          }
         } catch { continue; }
       }
 
       // If browse doesn't work, use home data as fallback
-      const homeData = await fetchHomeData();
+      const homeData = await homeDataPromise ?? await fetchHomeData();
       const lower = q.toLowerCase();
       const allItems = [...homeData.featured, ...homeData.popular, ...homeData.latest];
       const seen = new Set<string>();
@@ -526,21 +537,36 @@ function extractBrowseItems(html: string): AsuraPreview[] {
   const items: AsuraPreview[] = [];
   const seen = new Set<string>();
 
-  // Extract from Astro islands
+  // Build a map from bare-slug → full-slug (with hash) using HTML hrefs
+  // e.g. "nano-machine" → "nano-machine-19cdf401"
+  const fullSlugMap = new Map<string, string>();
+  const hrefHashRe = /href=["']\/comics\/([a-z0-9]+-(?:[a-z0-9]+-)*[0-9a-f]{6,8})[/"']/gi;
+  let hm: RegExpExecArray | null;
+  while ((hm = hrefHashRe.exec(html)) !== null) {
+    const fullSlug = hm[1];
+    const bareSlug = fullSlug.replace(/-[0-9a-f]{6,8}$/, "");
+    if (!fullSlugMap.has(bareSlug)) fullSlugMap.set(bareSlug, fullSlug);
+  }
+
+  // Extract from Astro islands — supports both "items" (home/popular) and "initialSeries" (browse/search)
   const islands = extractAstroIslands(html);
   for (const island of islands) {
-    if (!island.items) continue;
-    const rawItems = asArray<Record<string, unknown>>(island.items as unknown[]);
+    const rawItems = asArray<Record<string, unknown>>(
+      (island.items ?? island.initialSeries ?? []) as unknown[]
+    );
+    if (rawItems.length === 0) continue;
     for (const item of rawItems) {
       if (!item.slug || !item.title) continue;
-      const slug = String(item.slug);
+      const bareSlug = String(item.slug);
+      // Prefer full hash-suffixed slug from HTML hrefs; fall back to bare slug
+      const slug = fullSlugMap.get(bareSlug) ?? bareSlug;
       if (seen.has(slug)) continue;
       seen.add(slug);
       items.push({
         id: slug,
         sourceId: "asurascans",
         title: cleanText(item.title ?? ""),
-        coverUrl: String(item.cover_url ?? item.cover ?? ""),
+        coverUrl: String(item.cover_url ?? item.cover ?? item.image ?? item.thumbnail ?? item.cover_image ?? item.coverImage ?? item.poster ?? ""),
         status: normalizeStatus(item.status ?? "Ongoing"),
         latestChapter: item.last_chapter ? Number(item.last_chapter) : undefined,
         genres: asArray<unknown>(item.genres as unknown[]).map((g) => cleanText(

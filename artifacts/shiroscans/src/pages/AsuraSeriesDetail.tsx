@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useParams, useLocation } from "wouter";
-import { ArrowLeft, Bookmark, BookOpen, ChevronDown, ChevronUp, Calendar, User, Hash, Zap } from "lucide-react";
+import { ArrowLeft, Bookmark, BookOpen, ChevronDown, ChevronUp, Calendar, User, Hash, Zap, Star, Send, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -12,6 +12,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+const SERIES_CHAPTER = "_series_";
 
 function proxyImage(url: string): string {
   if (!url) return "";
@@ -41,11 +42,101 @@ interface AsuraSeries {
   chapters: AsuraChapter[];
 }
 
+interface ReactionData {
+  love: number;
+  fire: number;
+  wow: number;
+  sad: number;
+  angry: number;
+  userReaction: string | null;
+}
+
+interface RatingData {
+  average: number | null;
+  total: number;
+  userRating: number | null;
+}
+
+interface Comment {
+  id: number;
+  content: string;
+  createdAt: string;
+  userId: number;
+  username: string;
+  avatarUrl: string | null;
+}
+
+const REACTION_EMOJIS: { key: keyof Omit<ReactionData, "userReaction">; emoji: string; label: string }[] = [
+  { key: "love", emoji: "❤️", label: "Love" },
+  { key: "fire", emoji: "🔥", label: "Fire" },
+  { key: "wow", emoji: "😮", label: "Wow" },
+  { key: "sad", emoji: "😢", label: "Sad" },
+  { key: "angry", emoji: "😠", label: "Angry" },
+];
+
 function formatDate(iso: string | null): string {
   if (!iso) return "";
   try {
     return new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
   } catch { return ""; }
+}
+
+function timeAgo(iso: string): string {
+  try {
+    const diff = Date.now() - new Date(iso).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return "just now";
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.floor(h / 24);
+    if (d < 30) return `${d}d ago`;
+    return formatDate(iso);
+  } catch { return ""; }
+}
+
+function StarRating({ value, total, userRating, onRate }: {
+  value: number | null;
+  total: number;
+  userRating: number | null;
+  onRate: (v: number) => void;
+}) {
+  const [hover, setHover] = useState(0);
+  const stars = [2, 4, 6, 8, 10];
+  const displayVal = hover || userRating || value || 0;
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex gap-0.5">
+        {stars.map((v) => (
+          <button
+            key={v}
+            onMouseEnter={() => setHover(v)}
+            onMouseLeave={() => setHover(0)}
+            onClick={() => onRate(v)}
+            className="p-0.5 transition-transform hover:scale-110"
+            aria-label={`Rate ${v / 2} stars`}
+          >
+            <Star
+              className={`w-5 h-5 transition-colors ${
+                displayVal >= v
+                  ? "fill-yellow-400 text-yellow-400"
+                  : "fill-transparent text-white/20"
+              }`}
+            />
+          </button>
+        ))}
+      </div>
+      {value !== null && (
+        <span className="text-xs text-white/40">
+          {value.toFixed(1)} <span className="text-white/20">({total})</span>
+        </span>
+      )}
+      {userRating && (
+        <span className="text-[10px] text-primary/70 font-semibold">Your rating: {userRating / 2}★</span>
+      )}
+    </div>
+  );
 }
 
 export default function AsuraSeriesDetailPage() {
@@ -60,6 +151,16 @@ export default function AsuraSeriesDetailPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const [reactions, setReactions] = useState<ReactionData | null>(null);
+  const [reacting, setReacting] = useState(false);
+  const [rating, setRating] = useState<RatingData | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentTotal, setCommentTotal] = useState(0);
+  const [commentText, setCommentText] = useState("");
+  const [postingComment, setPostingComment] = useState(false);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const commentInputRef = useRef<HTMLTextAreaElement>(null);
+
   const safeSlug = slug ? decodeURIComponent(slug) : "";
 
   useEffect(() => {
@@ -70,6 +171,24 @@ export default function AsuraSeriesDetailPage() {
       .then((d: AsuraSeries) => setSeries(d))
       .catch(() => toast({ description: "Failed to load series", variant: "destructive" }))
       .finally(() => setLoading(false));
+  }, [safeSlug]);
+
+  useEffect(() => {
+    if (!safeSlug) return;
+    fetch(`${BASE}/api/reactions/asurascans/${encodeURIComponent(safeSlug)}/${SERIES_CHAPTER}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => d && setReactions(d))
+      .catch(() => {});
+    fetch(`${BASE}/api/ratings/asurascans/${encodeURIComponent(safeSlug)}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => d && setRating(d))
+      .catch(() => {});
+    setLoadingComments(true);
+    fetch(`${BASE}/api/comments/asurascans/${encodeURIComponent(safeSlug)}/${SERIES_CHAPTER}?limit=10&sortBy=newest`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d) { setComments(d.comments ?? []); setCommentTotal(d.total ?? 0); } })
+      .catch(() => {})
+      .finally(() => setLoadingComments(false));
   }, [safeSlug]);
 
   const { data: user } = useGetMe({ query: { queryKey: getGetMeQueryKey(), retry: false } });
@@ -87,6 +206,73 @@ export default function AsuraSeriesDetailPage() {
     } else {
       addBookmark.mutate({ data: { provider: "asurascans", seriesId: safeSlug, title: series.title, coverImage: series.coverUrl, type: "Manhwa", status: series.status } });
     }
+  }
+
+  async function handleReact(reaction: string) {
+    if (!user) { toast({ description: "Login to react", variant: "destructive" }); return; }
+    if (reacting) return;
+    setReacting(true);
+    try {
+      const r = await fetch(`${BASE}/api/reactions/asurascans/${encodeURIComponent(safeSlug)}/${SERIES_CHAPTER}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reaction }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        setReactions(d);
+      }
+    } catch { } finally { setReacting(false); }
+  }
+
+  async function handleRate(value: number) {
+    if (!user) { toast({ description: "Login to rate", variant: "destructive" }); return; }
+    try {
+      const r = await fetch(`${BASE}/api/ratings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "asurascans", seriesId: safeSlug, ratingValue: value }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        setRating(d);
+        toast({ description: "Rating saved!" });
+      }
+    } catch { }
+  }
+
+  async function handlePostComment(e: React.FormEvent) {
+    e.preventDefault();
+    const text = commentText.trim();
+    if (!text) return;
+    if (!user) { toast({ description: "Login to comment", variant: "destructive" }); return; }
+    setPostingComment(true);
+    try {
+      const r = await fetch(`${BASE}/api/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "asurascans", seriesId: safeSlug, chapterId: SERIES_CHAPTER, content: text }),
+      });
+      if (r.ok) {
+        const newComment = await r.json();
+        setComments((prev) => [newComment, ...prev]);
+        setCommentTotal((t) => t + 1);
+        setCommentText("");
+      } else {
+        toast({ description: "Failed to post comment", variant: "destructive" });
+      }
+    } catch { toast({ description: "Failed to post comment", variant: "destructive" }); }
+    finally { setPostingComment(false); }
+  }
+
+  async function handleDeleteComment(id: number) {
+    try {
+      const r = await fetch(`${BASE}/api/comments/${id}`, { method: "DELETE" });
+      if (r.ok) {
+        setComments((prev) => prev.filter((c) => c.id !== id));
+        setCommentTotal((t) => Math.max(0, t - 1));
+      }
+    } catch { }
   }
 
   if (loading) {
@@ -208,6 +394,41 @@ export default function AsuraSeriesDetailPage() {
         )}
       </div>
 
+      <div className="px-4 border-t border-white/[0.06] pt-5 pb-5">
+        <div className="flex items-center gap-3 mb-4">
+          <span className="text-sm font-bold text-white/70">Rate</span>
+          <StarRating
+            value={rating?.average ?? null}
+            total={rating?.total ?? 0}
+            userRating={rating?.userRating ?? null}
+            onRate={handleRate}
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {REACTION_EMOJIS.map(({ key, emoji, label }) => {
+            const count = reactions?.[key] ?? 0;
+            const isActive = reactions?.userReaction === key;
+            return (
+              <button
+                key={key}
+                onClick={() => handleReact(key)}
+                disabled={reacting}
+                aria-label={label}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm transition-all select-none ${
+                  isActive
+                    ? "bg-primary/20 border-primary/50 text-white scale-105 shadow-sm shadow-primary/20"
+                    : "bg-white/[0.04] border-white/[0.08] text-white/60 hover:bg-white/[0.08] hover:border-white/20"
+                }`}
+              >
+                <span className="text-base leading-none">{emoji}</span>
+                {count > 0 && <span className="text-xs font-bold">{count}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="px-4 border-t border-white/[0.06] pt-5 pb-8">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-extrabold text-white">{series.totalChapters} Chapters</h2>
@@ -251,6 +472,90 @@ export default function AsuraSeriesDetailPage() {
           <button onClick={() => setShowAllChapters(!showAllChapters)} className="mt-4 w-full py-2.5 text-sm text-white/40 hover:text-white border border-white/[0.06] rounded-lg hover:border-white/20 transition-all">
             {showAllChapters ? "Show less" : `Show all ${filteredChapters.length} chapters`}
           </button>
+        )}
+      </div>
+
+      <div className="px-4 border-t border-white/[0.06] pt-5 pb-12">
+        <h2 className="text-base font-extrabold text-white mb-4">
+          Comments {commentTotal > 0 && <span className="text-white/30 font-normal text-sm ml-1">({commentTotal})</span>}
+        </h2>
+
+        {user ? (
+          <form onSubmit={handlePostComment} className="mb-5">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center shrink-0 mt-0.5">
+                <span className="text-xs font-bold text-primary">{(user as any).username?.[0]?.toUpperCase() ?? "U"}</span>
+              </div>
+              <div className="flex-1 relative">
+                <textarea
+                  ref={commentInputRef}
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  placeholder="Share your thoughts..."
+                  maxLength={2000}
+                  rows={2}
+                  className="w-full bg-[#1a1a2e] border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/25 focus:outline-none focus:border-primary/40 resize-none pr-12"
+                />
+                <button
+                  type="submit"
+                  disabled={postingComment || !commentText.trim()}
+                  className="absolute right-2.5 bottom-2.5 p-1.5 rounded-lg bg-primary disabled:bg-white/10 disabled:text-white/20 text-white transition-all hover:bg-primary/90"
+                >
+                  {postingComment ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+          </form>
+        ) : (
+          <div className="mb-5 py-3 px-4 rounded-xl bg-white/[0.03] border border-white/[0.06] text-sm text-white/40 text-center">
+            <Link href="/login" className="text-primary hover:underline">Log in</Link> to join the discussion
+          </div>
+        )}
+
+        {loadingComments ? (
+          <div className="space-y-3">
+            {[1, 2].map((i) => (
+              <div key={i} className="flex gap-3">
+                <Skeleton className="w-8 h-8 rounded-full bg-[#1a1a2e] shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-3 w-24 bg-[#1a1a2e]" />
+                  <Skeleton className="h-4 w-full bg-[#1a1a2e]" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : comments.length === 0 ? (
+          <p className="text-sm text-white/25 text-center py-8">No comments yet. Be the first!</p>
+        ) : (
+          <div className="space-y-4">
+            {comments.map((c) => (
+              <div key={c.id} className="flex gap-3 group">
+                <div className="w-8 h-8 rounded-full bg-[#1a1a2e] border border-white/[0.06] flex items-center justify-center shrink-0">
+                  {c.avatarUrl ? (
+                    <img src={c.avatarUrl} alt={c.username} className="w-full h-full rounded-full object-cover" />
+                  ) : (
+                    <span className="text-xs font-bold text-white/50">{c.username?.[0]?.toUpperCase() ?? "?"}</span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2 mb-1">
+                    <span className="text-xs font-bold text-white/80">{c.username}</span>
+                    <span className="text-[10px] text-white/25">{timeAgo(c.createdAt)}</span>
+                    {user && (user as any).id === c.userId && (
+                      <button
+                        onClick={() => handleDeleteComment(c.id)}
+                        className="ml-auto opacity-0 group-hover:opacity-100 text-white/20 hover:text-red-400 transition-all p-0.5"
+                        aria-label="Delete comment"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-sm text-white/65 leading-relaxed break-words">{c.content}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

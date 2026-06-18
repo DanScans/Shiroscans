@@ -1,1 +1,2 @@
-- [AsuraScans scraper architecture](asurascans-scraper.md) — Astro v5.16.8 site, data in Astro island props + Schema.org JSON-LD, not Next.js
+- [AsuraScans browse page structure](asura-browse-structure.md) — browse/search uses `initialSeries` island key (not `items`), bare slugs need hash-suffix from HTML hrefs
+- [AsuraScans image proxy](asura-proxy.md) — chapter images and covers served via `/api/proxy-image?url=...`; CDN domains in allowlist in manga.ts
