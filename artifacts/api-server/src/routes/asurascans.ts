@@ -32,24 +32,48 @@ async function asuraFetch(path: string): Promise<string> {
   return res.text();
 }
 
-async function asuraJson<T>(path: string): Promise<T> {
-  const url = path.startsWith("http") ? path : `${ASURA_DOMAIN}${path}`;
-  const res = await fetch(url, {
-    headers: { ...ASURA_HEADERS, "Accept": "application/json, */*" },
-    signal: AbortSignal.timeout(20000),
-  });
-  if (!res.ok) throw new Error(`AsuraScans JSON ${path} returned ${res.status}`);
-  return res.json() as Promise<T>;
+// Astro serializes props as HTML-encoded JSON with [type, value] tuples.
+// type 0 = scalar/object, type 1 = array of [type, value] tuples
+function deserializeAstro(val: unknown): unknown {
+  if (!Array.isArray(val)) {
+    if (val !== null && typeof val === "object") {
+      return Object.fromEntries(
+        Object.entries(val as Record<string, unknown>).map(([k, v]) => [k, deserializeAstro(v)])
+      );
+    }
+    return val;
+  }
+  const [type, data] = val as [number, unknown];
+  if (type === 0) return deserializeAstro(data);
+  if (type === 1) return (data as unknown[]).map(deserializeAstro);
+  return data;
 }
 
-function extractNextData(html: string): Record<string, any> | null {
-  const m = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/);
-  if (!m?.[1]) return null;
-  try {
-    return JSON.parse(m[1]) as Record<string, any>;
-  } catch {
-    return null;
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+// Extract all Astro island props from HTML and return as parsed objects
+function extractAstroIslands(html: string): Record<string, unknown>[] {
+  const results: Record<string, unknown>[] = [];
+  const re = /<astro-island[^>]+props="(\{[^"]{10,}\})"[^>]*>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    try {
+      const raw = decodeHtmlEntities(m[1]);
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const deserialized = deserializeAstro(parsed) as Record<string, unknown>;
+      results.push(deserialized);
+    } catch {
+      // skip malformed islands
+    }
   }
+  return results;
 }
 
 function cleanText(v: unknown): string {
@@ -76,57 +100,20 @@ function asArray<T>(v: unknown): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
 }
 
-function extractCoverFromHtml(html: string, slug: string): string {
-  const patterns = [
-    /property=["']og:image["'][^>]*content=["']([^"']+)["']/,
-    /content=["']([^"']+)["'][^>]*property=["']og:image["']/,
-    /<meta[^>]+name=["']twitter:image["'][^>]*content=["']([^"']+)["']/,
-    new RegExp(`${slug}[^"']*\\.(jpg|jpeg|png|webp)`),
-    /class=["'][^"']*thumb[^"']*["'][^>]*src=["']([^"']+)["']/,
-    /<img[^>]+class=["'][^"']*wp-post-image[^"']*["'][^>]*src=["']([^"']+)["']/,
-  ];
-  for (const p of patterns) {
-    const m = html.match(p);
-    if (m?.[1] && m[1].startsWith("http")) return m[1].split("?")[0];
+// Parse Schema.org JSON-LD from inline <script type="application/ld+json"> tags
+function extractJsonLd(html: string): Record<string, unknown>[] {
+  const results: Record<string, unknown>[] = [];
+  const re = /<script\s+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    try {
+      const data = JSON.parse(m[1]) as Record<string, unknown>;
+      results.push(data);
+    } catch {
+      // skip malformed JSON-LD
+    }
   }
-  return "";
-}
-
-function extractSeriesFromHtml(html: string): Array<{ id: string; title: string; coverUrl: string; status: string; latestChapter?: number; genres: string[] }> {
-  const items: Array<{ id: string; title: string; coverUrl: string; status: string; latestChapter?: number; genres: string[] }> = [];
-
-  const itemPattern = /<(?:div|article|li)[^>]+class=["'][^"']*(?:page-item-detail|bs|bsx|manga-item|series-item|comics-item)[^"']*["'][^>]*>([\s\S]*?)(?=<(?:div|article|li)[^>]+class=["'][^"']*(?:page-item-detail|bs|bsx|manga-item|series-item|comics-item)|$)/gi;
-  let match: RegExpExecArray | null;
-
-  while ((match = itemPattern.exec(html)) !== null && items.length < 50) {
-    const block = match[1];
-
-    const hrefM = block.match(/href=["']([^"']*\/(?:series|manga|comics|manhua|manhwa)\/([^/"']+))[/"']/i);
-    if (!hrefM) continue;
-    const slug = hrefM[2];
-    const id = slug;
-
-    const titleM = block.match(/<(?:h\d|span)[^>]+class=["'][^"']*(?:title|ntitle|series-title)[^"']*["'][^>]*>([^<]+)/i)
-      || block.match(/class=["'][^"']*(?:title|ntitle)[^"']*["'][^>]*>([^<]+)/i)
-      || block.match(/<(?:span|h\d)[^>]*>([^<]{2,80})<\/(?:span|h\d)>/i);
-    if (!titleM) continue;
-    const title = cleanText(titleM[1]);
-    if (!title || title.length < 2) continue;
-
-    const imgM = block.match(/src=["']([^"']+(?:\.jpg|\.jpeg|\.png|\.webp))[^"']*["']/i)
-      || block.match(/data-src=["']([^"']+(?:\.jpg|\.jpeg|\.png|\.webp))[^"']*["']/i);
-    const coverUrl = imgM ? imgM[1].split("?")[0] : "";
-
-    const statusM = block.match(/class=["'][^"']*status[^"']*["'][^>]*>([^<]+)/i);
-    const status = statusM ? normalizeStatus(statusM[1]) : "Ongoing";
-
-    const chM = block.match(/Chapter\s+([\d.]+)/i);
-    const latestChapter = chM ? parseFloat(chM[1]) : undefined;
-
-    items.push({ id, title, coverUrl, status, latestChapter, genres: [] });
-  }
-
-  return items;
+  return results;
 }
 
 interface AsuraSeries {
@@ -162,45 +149,78 @@ interface AsuraPreview {
   genres: string[];
 }
 
-function parseSeriesPageNextData(nd: Record<string, any>): AsuraSeries | null {
-  const pp = nd?.props?.pageProps;
-  if (!pp) return null;
+function parseSeriesPage(html: string, slug: string): AsuraSeries | null {
+  // 1. Try Schema.org JSON-LD ComicSeries
+  const jsonLds = extractJsonLd(html);
+  const comicLd = jsonLds.find((d) => d["@type"] === "ComicSeries") as Record<string, unknown> | undefined;
 
-  const comic = pp.comic ?? pp.series ?? pp.manga ?? pp.post ?? pp.data;
-  if (!comic) return null;
+  let title = "";
+  let description = "";
+  let coverUrl = "";
+  let genres: string[] = [];
+  let status = "Ongoing";
 
-  const slug = String(comic.slug ?? comic.series_slug ?? nd.query?.series ?? "");
-  const title = cleanText(comic.title ?? comic.name ?? comic.comic_title ?? "");
+  if (comicLd) {
+    title = cleanText(comicLd.name ?? comicLd.headline ?? "");
+    description = cleanText(comicLd.description ?? "");
+    coverUrl = String(
+      (comicLd.image as Record<string, unknown> | undefined)?.url ??
+      comicLd.image ??
+      ""
+    );
+    genres = asArray<string>(comicLd.genre as unknown[]).map(cleanText).filter(Boolean);
+  }
+
+  if (!title) {
+    // Fallback: og:title
+    const ogM = html.match(/property=["']og:title["'][^>]*content=["']([^"']+)["']/i)
+      || html.match(/content=["']([^"']+)["'][^>]*property=["']og:title["']/i);
+    if (ogM) title = cleanText(ogM[1].replace(/\s*\|\s*Asura\s*Scans?$/i, ""));
+  }
+  if (!coverUrl) {
+    const ogImgM = html.match(/property=["']og:image["'][^>]*content=["']([^"']+)["']/i)
+      || html.match(/content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
+    if (ogImgM) coverUrl = ogImgM[1];
+  }
+  if (!description) {
+    const descM = html.match(/property=["']og:description["'][^>]*content=["']([^"']+)["']/i)
+      || html.match(/content=["']([^"']+)["'][^>]*property=["']og:description["']/i);
+    if (descM) description = cleanText(descM[1]);
+  }
+
   if (!title) return null;
 
-  const coverUrl = String(comic.cover ?? comic.coverUrl ?? comic.image ?? comic.thumbnail ?? comic.cover_image ?? pp.meta?.image ?? "");
-  const description = cleanText(comic.description ?? comic.synopsis ?? comic.summary ?? comic.overview ?? "");
-  const author = cleanText(
-    (Array.isArray(comic.authors) ? comic.authors.map((a: any) => a?.name ?? a).join(", ") : comic.author) ?? ""
-  );
-  const artist = cleanText(
-    (Array.isArray(comic.artists) ? comic.artists.map((a: any) => a?.name ?? a).join(", ") : comic.artist) ?? ""
-  );
-  const status = normalizeStatus(comic.status ?? comic.comic_status ?? "Ongoing");
-  const genres = asArray<any>(comic.genres ?? comic.tags ?? comic.categories)
-    .map((g: any) => cleanText(g?.name ?? g?.title ?? g))
-    .filter((g: string) => g.length > 0);
-  const altTitles = asArray<any>(comic.altTitles ?? comic.alt_titles ?? comic.other_names ?? comic.aliases)
-    .map((t: any) => cleanText(t?.name ?? t))
-    .filter((t: string) => t.length > 0);
+  // 2. Extract chapter list from HTML links: /comics/slug-hash/chapter/N
+  const chapterLinksRe = new RegExp(`href=["']/comics/${slug}/chapter/(\\d+)[/"']`, "gi");
+  const seenNums = new Set<number>();
+  const chapters: AsuraChapter[] = [];
+  let cm: RegExpExecArray | null;
+  while ((cm = chapterLinksRe.exec(html)) !== null) {
+    const num = parseInt(cm[1], 10);
+    if (!isNaN(num) && !seenNums.has(num)) {
+      seenNums.add(num);
+      chapters.push({
+        id: String(num),
+        slug: `chapter-${num}`,
+        number: num,
+        title: "",
+        releaseDate: null,
+      });
+    }
+  }
+  // Sort descending (latest first)
+  chapters.sort((a, b) => b.number - a.number);
 
-  const rawChapters = asArray<any>(comic.chapters ?? pp.chapters ?? comic.chapter_list ?? []);
-  const chapters: AsuraChapter[] = rawChapters.map((ch: any) => {
-    const chNum = parseFloat(String(ch.chapter ?? ch.chapter_number ?? ch.chapter_num ?? ch.number ?? 0));
-    const chSlug = String(ch.slug ?? ch.chapter_slug ?? ch.id ?? ch.chapter_id ?? chNum);
-    return {
-      id: chSlug,
-      slug: chSlug,
-      number: chNum,
-      title: cleanText(ch.title ?? ch.chapter_title ?? ""),
-      releaseDate: ch.created_at ?? ch.release_date ?? ch.date ?? ch.updated_at ?? null,
-    };
-  }).filter((ch: AsuraChapter) => ch.number > 0 || ch.slug);
+  // 3. Extract status from inline HTML
+  const statusM = html.match(/Status\s*<[^>]+>\s*<[^>]+>([^<]+)/i)
+    || html.match(/class=["'][^"']*status[^"']*["'][^>]*>([^<]{2,30})/i);
+  if (statusM) status = normalizeStatus(statusM[1]);
+
+  // 4. Author/Artist from HTML
+  const authorM = html.match(/Author[^<]*<[^>]*>([^<]+)/i);
+  const author = authorM ? cleanText(authorM[1]) : "";
+  const artistM = html.match(/Artist[^<]*<[^>]*>([^<]+)/i);
+  const artist = artistM ? cleanText(artistM[1]) : "";
 
   return {
     id: slug,
@@ -212,191 +232,183 @@ function parseSeriesPageNextData(nd: Record<string, any>): AsuraSeries | null {
     artist,
     status,
     genres,
-    altTitles,
-    totalChapters: chapters.length,
-    chapters,
-  };
-}
-
-function parseSeriesPageHtml(html: string, slug: string): AsuraSeries | null {
-  const nd = extractNextData(html);
-  if (nd) {
-    const result = parseSeriesPageNextData(nd);
-    if (result) return result;
-  }
-
-  const titleM = html.match(/<h1[^>]*class=["'][^"']*(?:title|entry-title|series-title)[^"']*["'][^>]*>([^<]+)/i)
-    || html.match(/<h1[^>]*>([^<]{2,120})<\/h1>/i)
-    || html.match(/property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
-  if (!titleM) return null;
-  const title = cleanText(titleM[1]);
-
-  const coverUrl = extractCoverFromHtml(html, slug);
-
-  const descM = html.match(/class=["'][^"']*(?:description|summary|synopsis|overview)[^"']*["'][^>]*>([\s\S]{10,2000}?)(?=<\/(?:div|p|section))/i)
-    || html.match(/property=["']og:description["'][^>]*content=["']([^"']{10,}?)["']/i);
-  const description = descM ? cleanText(descM[1]) : "";
-
-  const authorM = html.match(/(?:Author|Artist)[^<]*<[^>]*>([^<]+)/i);
-  const author = authorM ? cleanText(authorM[1]) : "";
-
-  const statusM = html.match(/Status[^<]*<[^>]*>([^<]+)/i)
-    || html.match(/class=["'][^"']*status[^"']*["'][^>]*>([^<]+)/i);
-  const status = statusM ? normalizeStatus(statusM[1]) : "Ongoing";
-
-  const genreMatches = [...html.matchAll(/href=["'][^"']*(?:genre|tag|category)\/([^/"']+)[/"'][^>]*>([^<]+)/gi)];
-  const genres = genreMatches.map((m) => cleanText(m[2])).filter(Boolean).slice(0, 15);
-
-  const chapterPattern = /href=["']([^"']*(?:chapter|ch)[^"']*\/([^/"']+))[/"'][^>]*>[\s\S]*?Chapter\s+([\d.]+)/gi;
-  const chapters: AsuraChapter[] = [];
-  let cm: RegExpExecArray | null;
-  while ((cm = chapterPattern.exec(html)) !== null && chapters.length < 500) {
-    const chSlug = cm[2];
-    const chNum = parseFloat(cm[3]);
-    if (!isNaN(chNum)) {
-      chapters.push({ id: chSlug, slug: chSlug, number: chNum, title: "", releaseDate: null });
-    }
-  }
-
-  return {
-    id: slug,
-    sourceId: "asurascans",
-    title,
-    coverUrl,
-    description,
-    author,
-    artist: "",
-    status,
-    genres,
     altTitles: [],
     totalChapters: chapters.length,
     chapters,
   };
 }
 
-function extractChapterImages(html: string): string[] {
-  const nd = extractNextData(html);
-  if (nd) {
-    const pp = nd?.props?.pageProps;
-    const images: string[] = [];
+function extractChapterImages(html: string, slug: string): {
+  pages: string[];
+  chapterList: AsuraChapter[];
+  prevChapterId: string | null;
+  nextChapterId: string | null;
+  seriesName: string;
+  chapterNumber: number;
+} {
+  const islands = extractAstroIslands(html);
 
-    const imgSources = [
-      pp?.chapter?.chapter_image,
-      pp?.chapter?.images,
-      pp?.chapter?.pages,
-      pp?.pages,
-      pp?.images,
-      pp?.chapter_images,
-      pp?.chapterImages,
-    ];
+  // Find the island that has chapter pages (has "pages" and "seriesSlug")
+  const chapterIsland = islands.find((isl) => isl.pages && isl.seriesSlug) as Record<string, unknown> | undefined;
 
-    for (const src of imgSources) {
-      if (!src) continue;
-      if (Array.isArray(src)) {
-        for (const item of src) {
-          const url = typeof item === "string" ? item : (item?.url ?? item?.src ?? item?.image ?? item?.image_url ?? "");
-          if (url && url.startsWith("http")) images.push(url);
-        }
-        if (images.length > 0) return images;
-      } else if (typeof src === "object") {
-        for (const val of Object.values(src)) {
-          const url = typeof val === "string" ? val : (val as any)?.url ?? "";
-          if (url && url.startsWith("http")) images.push(url);
-        }
-        if (images.length > 0) return images.sort();
+  let pages: string[] = [];
+  let chapterList: AsuraChapter[] = [];
+  let prevChapterId: string | null = null;
+  let nextChapterId: string | null = null;
+  let seriesName = "";
+  let chapterNumber = 0;
+
+  if (chapterIsland) {
+    seriesName = cleanText(chapterIsland.seriesName ?? "");
+    chapterNumber = Number(chapterIsland.chapterNumber ?? 0);
+
+    // Extract pages
+    const rawPages = asArray<Record<string, unknown>>(chapterIsland.pages as unknown[]);
+    pages = rawPages.map((p) => String(p.url ?? "")).filter((u) => u.startsWith("http"));
+
+    // Extract chapter list
+    const rawChapterList = asArray<Record<string, unknown>>(chapterIsland.chapterList as unknown[]);
+    for (const ch of rawChapterList) {
+      const num = Number(ch.number ?? 0);
+      if (num > 0) {
+        chapterList.push({
+          id: String(num),
+          slug: String(ch.slug ?? `chapter-${num}`),
+          number: num,
+          title: cleanText(ch.title ?? ""),
+          releaseDate: String(ch.created_at ?? "") || null,
+        });
       }
+    }
+    // Sort descending
+    chapterList.sort((a, b) => b.number - a.number);
+
+    // Extract prev/next
+    const prevCh = chapterIsland.prevChapter as Record<string, unknown> | null | undefined;
+    const nextCh = chapterIsland.nextChapter as Record<string, unknown> | null | undefined;
+    if (prevCh && typeof prevCh === "object" && prevCh.number) {
+      prevChapterId = String(prevCh.number);
+    }
+    if (nextCh && typeof nextCh === "object" && nextCh.number) {
+      nextChapterId = String(nextCh.number);
     }
   }
 
-  const images: string[] = [];
-
-  const readerPatterns = [
-    /<div[^>]+class=["'][^"']*(?:reading-content|reader-area|chapter-content|content-image|manga-content|page-img)[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi,
-    /<div[^>]+id=["'](?:image-list|chapter-images|reader)[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi,
-  ];
-
-  for (const pattern of readerPatterns) {
-    const sectionMatch = pattern.exec(html);
-    if (sectionMatch) {
-      const section = sectionMatch[1];
-      const imgMatches = [...section.matchAll(/(?:src|data-src|data-lazy-src)=["']([^"']+\.(?:jpg|jpeg|png|webp)(?:\?[^"']*)?)['"]/gi)];
-      for (const m of imgMatches) {
-        if (m[1].startsWith("http") && !m[1].includes("logo") && !m[1].includes("icon")) {
-          images.push(m[1]);
-        }
-      }
-      if (images.length > 0) return images;
+  // Fallback: extract images directly from src attributes
+  if (pages.length === 0) {
+    const chaptersPathBase = `/asura-images/chapters/${slug.replace(/-[0-9a-f]{6,}$/, "")}/`;
+    const allImgRe = /src=["'](https:\/\/cdn\.asurascans\.com\/asura-images\/chapters\/[^"']+\.(?:jpg|jpeg|png|webp)[^"']*)['"]/gi;
+    let im: RegExpExecArray | null;
+    while ((im = allImgRe.exec(html)) !== null) {
+      const url = im[1];
+      if (url.includes(chaptersPathBase) || pages.length > 0) pages.push(url);
+    }
+    // If still empty, grab all chapter images
+    if (pages.length === 0) {
+      const anyRe = /src=["'](https:\/\/cdn\.asurascans\.com\/asura-images\/chapters\/[^"']+\.(?:jpg|jpeg|png|webp)[^"']*)['"]/gi;
+      let am: RegExpExecArray | null;
+      while ((am = anyRe.exec(html)) !== null) pages.push(am[1]);
     }
   }
 
-  const allImgMatches = [...html.matchAll(/(?:src|data-src|data-lazy-src)=["']([^"']+\.(?:jpg|jpeg|png|webp)(?:\?[^"']*)?)['"]/gi)];
-  for (const m of allImgMatches) {
-    const url = m[1];
-    if (!url.startsWith("http")) continue;
-    if (url.includes("logo") || url.includes("icon") || url.includes("banner") || url.includes("avatar")) continue;
-    if (url.includes("cover") && images.length > 0) continue;
-    images.push(url);
-  }
-
-  return images;
+  return { pages, chapterList, prevChapterId, nextChapterId, seriesName, chapterNumber };
 }
 
 async function fetchHomeData(): Promise<{ featured: AsuraPreview[]; popular: AsuraPreview[]; latest: AsuraPreview[] }> {
   const html = await asuraFetch("/");
-  const nd = extractNextData(html);
+  const islands = extractAstroIslands(html);
 
   let featured: AsuraPreview[] = [];
   let popular: AsuraPreview[] = [];
   let latest: AsuraPreview[] = [];
 
-  if (nd) {
-    const pp = nd?.props?.pageProps ?? {};
+  // Astro islands on the home page contain "items" arrays with hero carousel series
+  // The hrefs in the HTML use /comics/slug-hashid format
+  // We extract slugs from the HTML hrefs (which include the hash suffix), and use those
+  // alongside cover URLs and titles from the Astro island data
 
-    const carouselSrc = asArray<any>(pp.carousel ?? pp.featured ?? pp.slider ?? pp.highlight ?? pp.topSeries ?? pp.hot);
-    if (carouselSrc.length > 0) {
-      featured = carouselSrc.slice(0, 10).map((c: any): AsuraPreview => ({
-        id: String(c.slug ?? c.series_slug ?? c.id ?? c.comic_slug ?? ""),
-        sourceId: "asurascans",
-        title: cleanText(c.title ?? c.name ?? c.comic_title ?? ""),
-        coverUrl: String(c.cover ?? c.image ?? c.coverUrl ?? c.thumbnail ?? ""),
-        status: normalizeStatus(c.status ?? "Ongoing"),
-        latestChapter: c.last_chapter ?? c.latestChapter ?? c.chapter_count ?? undefined,
-        genres: asArray<any>(c.genres ?? c.tags ?? []).map((g: any) => cleanText(g?.name ?? g)),
-      })).filter((c: AsuraPreview) => c.id && c.title);
-    }
-
-    const popularSrc = asArray<any>(pp.popular ?? pp.popularSeries ?? pp.trending ?? pp.hot ?? pp.popularComics);
-    if (popularSrc.length > 0) {
-      popular = popularSrc.slice(0, 20).map((c: any): AsuraPreview => ({
-        id: String(c.slug ?? c.series_slug ?? c.id ?? ""),
-        sourceId: "asurascans",
-        title: cleanText(c.title ?? c.name ?? ""),
-        coverUrl: String(c.cover ?? c.image ?? c.coverUrl ?? ""),
-        status: normalizeStatus(c.status ?? "Ongoing"),
-        latestChapter: c.last_chapter ?? c.latestChapter ?? undefined,
-        genres: asArray<any>(c.genres ?? c.tags ?? []).map((g: any) => cleanText(g?.name ?? g)),
-      })).filter((c: AsuraPreview) => c.id && c.title);
-    }
-
-    const latestSrc = asArray<any>(pp.latest ?? pp.latestSeries ?? pp.recentlyUpdated ?? pp.comics ?? pp.series);
-    if (latestSrc.length > 0) {
-      latest = latestSrc.slice(0, 20).map((c: any): AsuraPreview => ({
-        id: String(c.slug ?? c.series_slug ?? c.id ?? ""),
-        sourceId: "asurascans",
-        title: cleanText(c.title ?? c.name ?? ""),
-        coverUrl: String(c.cover ?? c.image ?? c.coverUrl ?? ""),
-        status: normalizeStatus(c.status ?? "Ongoing"),
-        latestChapter: c.last_chapter ?? c.latestChapter ?? undefined,
-        genres: asArray<any>(c.genres ?? c.tags ?? []).map((g: any) => cleanText(g?.name ?? g)),
-      })).filter((c: AsuraPreview) => c.id && c.title);
+  // Get hrefs order from HTML (includes hash: got-dropped-into-...-19cdf401)
+  const hrefRe = /href=["']\/comics\/([a-z0-9-]+-[0-9a-f]{6,8})[/"']/gi;
+  const hrefOrder: string[] = [];
+  const seenHrefs = new Set<string>();
+  let hm: RegExpExecArray | null;
+  while ((hm = hrefRe.exec(html)) !== null) {
+    if (!seenHrefs.has(hm[1])) {
+      seenHrefs.add(hm[1]);
+      hrefOrder.push(hm[1]); // full slug with hash, e.g. "got-dropped-into-...-19cdf401"
     }
   }
 
-  if (featured.length === 0 && popular.length === 0) {
-    const items = extractSeriesFromHtml(html);
-    featured = items.slice(0, 8).map((i) => ({ ...i, sourceId: "asurascans" }));
-    popular = items.slice(0, 20).map((i) => ({ ...i, sourceId: "asurascans" }));
-    latest = items.slice(0, 20).map((i) => ({ ...i, sourceId: "asurascans" }));
+  // Map slug-without-hash → full-slug-with-hash
+  // e.g. "got-dropped-into-a-ghost-story-still-gotta-work" → "got-dropped-into-a-ghost-story-still-gotta-work-19cdf401"
+  const slugToFullSlug = new Map<string, string>();
+  for (const fullSlug of hrefOrder) {
+    const withoutHash = fullSlug.replace(/-[0-9a-f]{6,8}$/, "");
+    slugToFullSlug.set(withoutHash, fullSlug);
+  }
+
+  // Find the island(s) with series "items"
+  for (const island of islands) {
+    if (!island.items) continue;
+    const items = asArray<Record<string, unknown>>(island.items as unknown[]);
+    if (items.length === 0) continue;
+
+    // Check if first item has slug and title (series data)
+    const first = items[0] as Record<string, unknown>;
+    if (!first.slug || !first.title) continue;
+
+    const previews: AsuraPreview[] = items.map((item: Record<string, unknown>): AsuraPreview => {
+      const bareSlug = String(item.slug ?? "");
+      const fullSlug = slugToFullSlug.get(bareSlug) ?? bareSlug;
+      return {
+        id: fullSlug,
+        sourceId: "asurascans",
+        title: cleanText(item.title ?? ""),
+        coverUrl: String(item.cover_url ?? item.cover ?? item.coverUrl ?? ""),
+        status: normalizeStatus(item.status ?? "Ongoing"),
+        latestChapter: item.last_chapter ? Number(item.last_chapter) : undefined,
+        genres: asArray<unknown>(item.genres as unknown[]).map((g) => cleanText(
+          typeof g === "object" && g !== null ? (g as Record<string, unknown>).name ?? g : g
+        )).filter(Boolean),
+      };
+    }).filter((p: AsuraPreview) => p.id && p.title);
+
+    if (featured.length === 0) {
+      featured = previews.slice(0, 10);
+    } else if (popular.length === 0) {
+      popular = previews.slice(0, 20);
+    } else if (latest.length === 0) {
+      latest = previews.slice(0, 20);
+    }
+  }
+
+  // Fallback: use the hrefs + og:image from HTML if islands gave nothing
+  if (featured.length === 0 && hrefOrder.length > 0) {
+    // Extract titles from HTML around each href
+    const previewsFromHtml: AsuraPreview[] = [];
+    for (const fullSlug of hrefOrder.slice(0, 20)) {
+      // Try to find title near the href
+      const escapedSlug = fullSlug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const blockRe = new RegExp(`href=["']/comics/${escapedSlug}[/"'][^>]*>[\\s\\S]{0,600}?(?=href=["']|$)`, "i");
+      const blockM = html.match(blockRe);
+      let title = "";
+      if (blockM) {
+        const tm = blockM[0].match(/>([A-Z][^<]{2,80})</);
+        if (tm) title = cleanText(tm[1]);
+      }
+      if (!title) continue;
+
+      // Cover: look for cdn.asurascans.com cover matching the slug without hash
+      const bareSlug = fullSlug.replace(/-[0-9a-f]{6,8}$/, "");
+      const coverRe = new RegExp(`(https://cdn\\.asurascans\\.com/asura-images/covers/${bareSlug}\\.[^"']+)`, "i");
+      const coverM = html.match(coverRe);
+      const coverUrl = coverM ? coverM[1] : "";
+
+      previewsFromHtml.push({ id: fullSlug, sourceId: "asurascans", title, coverUrl, status: "Ongoing", genres: [] });
+    }
+    featured = previewsFromHtml.slice(0, 10);
+    popular = previewsFromHtml.slice(0, 20);
+    latest = previewsFromHtml.slice(0, 20);
   }
 
   if (featured.length === 0) featured = popular.slice(0, 8);
@@ -422,32 +434,11 @@ router.get("/asurascans/series/:slug", async (req, res): Promise<void> => {
 
   try {
     const data = await withAsuraCache(`asura:series:${slug}`, 10 * 60 * 1000, async (): Promise<AsuraSeries> => {
-      const paths = [
-        `/series/${slug}/`,
-        `/comics/${slug}/`,
-        `/manga/${slug}/`,
-        `/${slug}/`,
-      ];
-
-      let html = "";
-      let fetchedPath = "";
-      for (const p of paths) {
-        try {
-          html = await asuraFetch(p);
-          fetchedPath = p;
-          break;
-        } catch {
-          continue;
-        }
-      }
-
-      if (!html) throw new Error(`Series ${slug} not found on any path`);
-
-      const series = parseSeriesPageHtml(html, slug);
+      const html = await asuraFetch(`/comics/${slug}/`);
+      const series = parseSeriesPage(html, slug);
       if (!series || !series.title) throw new Error(`Could not parse series data for ${slug}`);
       return series;
     });
-
     res.json(data);
   } catch (err) {
     console.error(`[AsuraScans] series ${slug} error:`, err);
@@ -455,71 +446,35 @@ router.get("/asurascans/series/:slug", async (req, res): Promise<void> => {
   }
 });
 
-// GET /api/asurascans/chapters/:slug/:chapterId
-router.get("/asurascans/chapters/:slug/:chapterId", async (req, res): Promise<void> => {
-  const { slug, chapterId } = req.params;
-  if (!slug || !chapterId) { res.status(400).json({ error: "slug and chapterId required" }); return; }
+// GET /api/asurascans/chapters/:slug/:chapterNum
+// chapterNum is the numeric chapter number (e.g. "1", "22")
+router.get("/asurascans/chapters/:slug/:chapterNum", async (req, res): Promise<void> => {
+  const { slug, chapterNum } = req.params;
+  if (!slug || !chapterNum) { res.status(400).json({ error: "slug and chapterNum required" }); return; }
 
-  const cacheKey = `asura:chapter:${slug}:${chapterId}`;
-  const cached = _asuraCache.get(cacheKey);
-  if (cached && Date.now() < cached.expiresAt) {
-    res.json(cached.data);
-    return;
-  }
+  const cacheKey = `asura:chapter:${slug}:${chapterNum}`;
 
   try {
-    const seriesData = await withAsuraCache(`asura:series:${slug}`, 10 * 60 * 1000, async (): Promise<AsuraSeries> => {
-      const paths = [`/series/${slug}/`, `/comics/${slug}/`, `/manga/${slug}/`, `/${slug}/`];
-      for (const p of paths) {
-        try {
-          const html = await asuraFetch(p);
-          const series = parseSeriesPageHtml(html, slug);
-          if (series?.title) return series;
-        } catch { continue; }
-      }
-      throw new Error(`Series ${slug} not found`);
+    const result = await withAsuraCache(cacheKey, 2 * 60 * 60 * 1000, async () => {
+      const html = await asuraFetch(`/comics/${slug}/chapter/${chapterNum}`);
+      const { pages, chapterList, prevChapterId, nextChapterId, seriesName, chapterNumber } =
+        extractChapterImages(html, slug);
+
+      return {
+        id: chapterNum,
+        seriesId: slug,
+        seriesTitle: seriesName,
+        pages,
+        currentChapter: String(chapterNumber || chapterNum),
+        prevChapterId,
+        nextChapterId,
+        chapterList,
+      };
     });
 
-    const allChapters = seriesData.chapters;
-    const sortedChapters = [...allChapters].sort((a, b) => a.number - b.number);
-    const currentIdx = sortedChapters.findIndex((c) => c.id === chapterId || c.slug === chapterId);
-
-    const prevChapter = currentIdx > 0 ? sortedChapters[currentIdx - 1] : null;
-    const nextChapter = currentIdx >= 0 && currentIdx < sortedChapters.length - 1 ? sortedChapters[currentIdx + 1] : null;
-    const currentNum = currentIdx >= 0 ? String(sortedChapters[currentIdx].number) : chapterId;
-
-    const chapterPaths = [
-      `/series/${slug}/${chapterId}/`,
-      `/series/${slug}/chapter-${chapterId}/`,
-      `/comics/${slug}/${chapterId}/`,
-      `/comics/${slug}/chapter-${chapterId}/`,
-      `/${slug}/${chapterId}/`,
-      `/${slug}/chapter-${chapterId}/`,
-    ];
-
-    let pages: string[] = [];
-    for (const p of chapterPaths) {
-      try {
-        const html = await asuraFetch(p);
-        pages = extractChapterImages(html);
-        if (pages.length > 0) break;
-      } catch { continue; }
-    }
-
-    const response = {
-      id: chapterId,
-      seriesId: slug,
-      seriesTitle: seriesData.title,
-      pages,
-      currentChapter: currentNum,
-      prevChapterId: prevChapter?.id ?? null,
-      nextChapterId: nextChapter?.id ?? null,
-    };
-
-    _asuraCache.set(cacheKey, { data: response, expiresAt: Date.now() + 2 * 60 * 60 * 1000 });
-    res.json(response);
+    res.json(result);
   } catch (err) {
-    console.error(`[AsuraScans] chapter ${slug}/${chapterId} error:`, err);
+    console.error(`[AsuraScans] chapter ${slug}/${chapterNum} error:`, err);
     res.status(502).json({ error: "Failed to fetch chapter pages" });
   }
 });
@@ -531,40 +486,33 @@ router.get("/asurascans/search", async (req, res): Promise<void> => {
 
   try {
     const results = await withAsuraCache(`asura:search:${q.toLowerCase()}`, 2 * 60 * 1000, async (): Promise<AsuraPreview[]> => {
-      const paths = [
-        `/series/?search=${encodeURIComponent(q)}`,
-        `/?s=${encodeURIComponent(q)}&post_type=wp-manga`,
-        `/wp-json/wp/v2/posts?search=${encodeURIComponent(q)}&per_page=20&_fields=slug,title,featured_media`,
-        `/series/?search_value=${encodeURIComponent(q)}`,
+      // asurascans uses /browse with a search parameter
+      const searchPaths = [
+        `/browse?search=${encodeURIComponent(q)}`,
+        `/browse?q=${encodeURIComponent(q)}`,
       ];
 
-      for (const p of paths) {
+      for (const p of searchPaths) {
         try {
-          if (p.includes("wp-json")) {
-            type WpPost = { slug: string; title: { rendered: string }; featured_media?: string; link?: string };
-            const data = await asuraJson<WpPost[]>(p);
-            if (Array.isArray(data) && data.length > 0) {
-              return data.map((post: WpPost) => ({
-                id: post.slug,
-                sourceId: "asurascans",
-                title: cleanText(post.title?.rendered ?? post.slug),
-                coverUrl: "",
-                status: "Ongoing",
-                genres: [],
-              }));
-            }
-          } else {
-            const html = await asuraFetch(p);
-            const items = extractSeriesFromHtml(html);
-            const lower = q.toLowerCase();
-            const filtered = items.filter((i) => i.title.toLowerCase().includes(lower));
-            if (filtered.length > 0) return filtered.map((i) => ({ ...i, sourceId: "asurascans" }));
-            if (items.length > 0) return items.map((i) => ({ ...i, sourceId: "asurascans" })).slice(0, 20);
-          }
+          const html = await asuraFetch(p);
+          const items = extractBrowseItems(html);
+          const lower = q.toLowerCase();
+          const filtered = items.filter((i) => i.title.toLowerCase().includes(lower));
+          if (filtered.length > 0) return filtered;
+          if (items.length > 0) return items.slice(0, 20);
         } catch { continue; }
       }
 
-      return [];
+      // If browse doesn't work, use home data as fallback
+      const homeData = await fetchHomeData();
+      const lower = q.toLowerCase();
+      const allItems = [...homeData.featured, ...homeData.popular, ...homeData.latest];
+      const seen = new Set<string>();
+      return allItems.filter((i) => {
+        if (seen.has(i.id)) return false;
+        seen.add(i.id);
+        return i.title.toLowerCase().includes(lower);
+      });
     });
 
     res.json({ results });
@@ -574,57 +522,103 @@ router.get("/asurascans/search", async (req, res): Promise<void> => {
   }
 });
 
+function extractBrowseItems(html: string): AsuraPreview[] {
+  const items: AsuraPreview[] = [];
+  const seen = new Set<string>();
+
+  // Extract from Astro islands
+  const islands = extractAstroIslands(html);
+  for (const island of islands) {
+    if (!island.items) continue;
+    const rawItems = asArray<Record<string, unknown>>(island.items as unknown[]);
+    for (const item of rawItems) {
+      if (!item.slug || !item.title) continue;
+      const slug = String(item.slug);
+      if (seen.has(slug)) continue;
+      seen.add(slug);
+      items.push({
+        id: slug,
+        sourceId: "asurascans",
+        title: cleanText(item.title ?? ""),
+        coverUrl: String(item.cover_url ?? item.cover ?? ""),
+        status: normalizeStatus(item.status ?? "Ongoing"),
+        latestChapter: item.last_chapter ? Number(item.last_chapter) : undefined,
+        genres: asArray<unknown>(item.genres as unknown[]).map((g) => cleanText(
+          typeof g === "object" && g !== null ? (g as Record<string, unknown>).name ?? g : g
+        )).filter(Boolean),
+      });
+    }
+  }
+
+  // Fallback: extract from href patterns
+  if (items.length === 0) {
+    const hrefRe = /href=["']\/comics\/([a-z0-9-]+-[0-9a-f]{6,8})[/"']/gi;
+    let hm: RegExpExecArray | null;
+    while ((hm = hrefRe.exec(html)) !== null) {
+      const fullSlug = hm[1];
+      if (seen.has(fullSlug)) continue;
+      seen.add(fullSlug);
+      items.push({
+        id: fullSlug,
+        sourceId: "asurascans",
+        title: fullSlug.replace(/-[0-9a-f]{6,8}$/, "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        coverUrl: "",
+        status: "Ongoing",
+        genres: [],
+      });
+    }
+  }
+
+  return items;
+}
+
 // GET /api/asurascans/browse?genre=&status=&page=
 router.get("/asurascans/browse", async (req, res): Promise<void> => {
   const genre = req.query.genre ? String(req.query.genre).toLowerCase() : "";
   const status = req.query.status ? String(req.query.status).toLowerCase() : "";
   const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
-  const limit = 24;
 
   const cacheKey = `asura:browse:${genre}:${status}:${page}`;
 
   try {
     const data = await withAsuraCache(cacheKey, 5 * 60 * 1000, async () => {
       const params = new URLSearchParams();
-      if (genre) params.set("genre", genre);
+      if (genre) params.set("genres", genre);
       if (status) params.set("status", status);
       if (page > 1) params.set("page", String(page));
 
-      const paths = [
-        `/series/?${params.toString()}`,
-        `/comics/?${params.toString()}`,
-        `/series/page/${page}/?${params.toString()}`,
-      ];
+      const html = await asuraFetch(`/browse?${params.toString()}`);
+      const items = extractBrowseItems(html);
 
-      let items: AsuraPreview[] = [];
-      for (const p of paths) {
-        try {
-          const html = await asuraFetch(p);
-          const raw = extractSeriesFromHtml(html);
-          if (raw.length > 0) {
-            items = raw.map((i) => ({ ...i, sourceId: "asurascans" }));
-            break;
-          }
-        } catch { continue; }
-      }
-
-      if (items.length === 0) {
-        const { popular } = await fetchHomeData();
-        items = popular;
-      }
-
-      if (genre) items = items.filter((i) => i.genres.some((g) => g.toLowerCase() === genre));
-      if (status) items = items.filter((i) => normalizeStatus(i.status).toLowerCase().includes(status));
-
-      const total = items.length;
-      const paged = items.slice((page - 1) * limit, page * limit);
-      return { results: paged, total, page, hasMore: page * limit < total || items.length >= limit };
+      return { results: items, page, hasMore: items.length >= 20, total: items.length };
     });
 
     res.json(data);
   } catch (err) {
     console.error("[AsuraScans] browse error:", err);
-    res.status(502).json({ error: "Browse failed", results: [], total: 0, page, hasMore: false });
+    res.status(502).json({ error: "Browse failed", results: [], page: 1, hasMore: false });
+  }
+});
+
+// GET /api/asurascans/latest
+router.get("/asurascans/latest", async (_req, res): Promise<void> => {
+  try {
+    const homeData = await withAsuraCache("asura:home", 5 * 60 * 1000, fetchHomeData);
+    res.json({ results: homeData.latest });
+  } catch (err) {
+    console.error("[AsuraScans] latest error:", err);
+    res.status(502).json({ error: "Failed to fetch latest", results: [] });
+  }
+});
+
+// GET /api/asurascans/popular
+router.get("/asurascans/popular", async (_req, res): Promise<void> => {
+  try {
+    const homeData = await withAsuraCache("asura:home", 5 * 60 * 1000, fetchHomeData);
+    res.json({ results: homeData.popular });
+  } catch (err) {
+    console.error("[AsuraScans] popular error:", err);
+    res.status(502).json({ error: "Failed to fetch popular", results: [] });
   }
 });
 

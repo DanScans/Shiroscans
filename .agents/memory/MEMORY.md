@@ -1,0 +1,1 @@
+- [AsuraScans scraper architecture](asurascans-scraper.md) — Astro v5.16.8 site, data in Astro island props + Schema.org JSON-LD, not Next.js
