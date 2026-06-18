@@ -1,1 +1,4 @@
 - [Comick local timeout](comick-timeout.md) — localhost:3001 never runs; local timeout must stay ≤1.5s or every API call stalls 25s before fallback
+- [MangaDex chapter caching](mdx-chapter-cache.md) — chapter pages cached 2h, feed 30min, title 1h; all 4 calls parallel
+- [MangaDex CDN proxy allowlist](mdx-cdn-allowlist.md) — at-home CDN hostnames are dynamic; use wildcard matching in isAllowedProxyHost()
+- [FlameComics chapter nav](flame-chapter-nav.md) — chapter response includes prevChapterId/prevToken/nextChapterId/nextToken for reader nav

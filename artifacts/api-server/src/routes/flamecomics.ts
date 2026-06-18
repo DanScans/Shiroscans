@@ -2,6 +2,17 @@ import { Router, type IRouter } from "express";
 
 const router: IRouter = Router();
 
+// ─── TTL in-memory cache ──────────────────────────────────────────────────────
+const _flameCache = new Map<string, { data: unknown; expiresAt: number }>();
+function withFlameCache<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
+  const hit = _flameCache.get(key);
+  if (hit && Date.now() < hit.expiresAt) return Promise.resolve(hit.data as T);
+  return fn().then((data) => {
+    _flameCache.set(key, { data, expiresAt: Date.now() + ttlMs });
+    return data;
+  });
+}
+
 const FLAME_DOMAIN = "https://flamecomics.xyz";
 const FLAME_CDN = "https://cdn.flamecomics.xyz";
 const IMAGE_SERIES_PATH = "uploads/images/series";
@@ -137,36 +148,39 @@ router.get("/flamecomics/series/:id", async (req, res): Promise<void> => {
   if (!id) { res.status(400).json({ error: "id required" }); return; }
 
   try {
-    const path = `series/${encodeURIComponent(id)}.json?id=${encodeURIComponent(id)}`;
-    const payload = await flameJson(path);
-    const pp = getPageProps(payload);
-    const s = pp.series;
-    if (!s) { res.status(404).json({ error: "Series not found" }); return; }
+    const result = await withFlameCache(`series:${id}`, 10 * 60 * 1000, async () => {
+      const path = `series/${encodeURIComponent(id)}.json?id=${encodeURIComponent(id)}`;
+      const payload = await flameJson(path);
+      const pp = getPageProps(payload);
+      const s = pp.series;
+      if (!s) throw new Error("Series not found");
 
-    const cover = s.cover ? seriesImageUrl(id, String(s.cover)) : "";
+      const cover = s.cover ? seriesImageUrl(id, String(s.cover)) : "";
+      const chapters = asArray<any>(pp.chapters).map((ch) => ({
+        id: String(ch.chapter_id),
+        token: String(ch.token ?? ""),
+        number: parseFloat(String(ch.chapter)),
+        title: cleanText(ch.title ?? ""),
+        releaseDate: ch.release_date ? new Date(Number(ch.release_date) * 1000).toISOString() : null,
+      }));
 
-    const chapters = asArray<any>(pp.chapters).map((ch) => ({
-      id: String(ch.chapter_id),
-      token: String(ch.token ?? ""),
-      number: parseFloat(String(ch.chapter)),
-      title: cleanText(ch.title ?? ""),
-      releaseDate: ch.release_date ? new Date(Number(ch.release_date) * 1000).toISOString() : null,
-    }));
-
-    res.json({
-      id,
-      sourceId: "flamecomics",
-      title: cleanText(s.title),
-      coverUrl: cover,
-      description: cleanText(s.description),
-      author: cleanText(s.author),
-      artist: cleanText(s.artist),
-      status: normalizeStatus(s.status),
-      genres: asArray<string>(s.tags).map(cleanText),
-      altTitles: asArray<string>(s.altTitles).map(cleanText),
-      totalChapters: chapters.length,
-      chapters,
+      return {
+        id,
+        sourceId: "flamecomics",
+        title: cleanText(s.title),
+        coverUrl: cover,
+        description: cleanText(s.description),
+        author: cleanText(s.author),
+        artist: cleanText(s.artist),
+        status: normalizeStatus(s.status),
+        genres: asArray<string>(s.tags).map(cleanText),
+        altTitles: asArray<string>(s.altTitles).map(cleanText),
+        totalChapters: chapters.length,
+        chapters,
+      };
     });
+
+    res.json(result);
   } catch (err) {
     console.error(`[FlameComics] series ${id} error:`, err);
     res.status(502).json({ error: "Failed to fetch series" });
@@ -181,31 +195,67 @@ router.get("/flamecomics/chapters/:seriesId/:chapterId", async (req, res): Promi
 
   if (!seriesId || !chapterId) { res.status(400).json({ error: "seriesId and chapterId required" }); return; }
 
-  try {
-    let resolvedToken = token;
+  // Check full response cache first — chapter pages never change after publication
+  const chCacheKey = `chapter:${seriesId}:${chapterId}`;
+  const chCached = _flameCache.get(chCacheKey);
+  if (chCached && Date.now() < chCached.expiresAt) {
+    res.json(chCached.data);
+    return;
+  }
 
+  try {
+    // Fetch series data (cached) to resolve token + get prev/next chapter navigation
+    const seriesPath = `series/${encodeURIComponent(seriesId)}.json?id=${encodeURIComponent(seriesId)}`;
+    const seriesPayload = await withFlameCache(`flame-series-raw:${seriesId}`, 10 * 60 * 1000, () => flameJson(seriesPath));
+    const seriesPp = getPageProps(seriesPayload as Record<string, any>);
+    const allChapters = asArray<any>(seriesPp.chapters);
+    const seriesTitle = cleanText(seriesPp.series?.title ?? "");
+
+    let resolvedToken = token;
     if (!resolvedToken) {
-      const seriesPath = `series/${encodeURIComponent(seriesId)}.json?id=${encodeURIComponent(seriesId)}`;
-      const seriesPayload = await flameJson(seriesPath);
-      const pp = getPageProps(seriesPayload);
-      const ch = asArray<any>(pp.chapters).find((c) => String(c.chapter_id) === chapterId);
+      const ch = allChapters.find((c: any) => String(c.chapter_id) === chapterId);
       if (!ch?.token) { res.status(404).json({ error: "Chapter token not found" }); return; }
       resolvedToken = String(ch.token);
     }
 
+    // Get chapter pages (cached)
     const chPath = `series/${encodeURIComponent(seriesId)}/${encodeURIComponent(resolvedToken)}.json?id=${encodeURIComponent(seriesId)}&token=${encodeURIComponent(resolvedToken)}`;
-    const payload = await flameJson(chPath);
-    const pp = getPageProps(payload);
+    const payload = await withFlameCache(`flame-chraw:${seriesId}:${resolvedToken}`, 2 * 60 * 60 * 1000, () => flameJson(chPath));
+    const pp = getPageProps(payload as Record<string, any>);
     const chapter = pp.chapter;
     if (!chapter) { res.status(404).json({ error: "Chapter not found" }); return; }
 
-    const images = Object.values(chapter.images ?? {}) as Array<{ name?: string }>;
-    const pages = images
-      .map((img) => img.name)
-      .filter((name): name is string => Boolean(name))
-      .map((name) => chapterImageUrl(seriesId, resolvedToken!, name));
+    const images = Object.values(chapter.images ?? {}) as Array<{ name?: string; index?: number }>;
+    const sortedImages = images
+      .map((img, i) => ({ name: img.name, index: img.index ?? i }))
+      .filter((img): img is { name: string; index: number } => Boolean(img.name))
+      .sort((a, b) => a.index - b.index);
+    const pages = sortedImages.map(({ name }) => chapterImageUrl(seriesId, resolvedToken!, name));
 
-    res.json({ id: chapterId, seriesId, pages });
+    // Build prev/next navigation from sorted chapters list
+    // Chapters sorted ascending by chapter number → prev = lower, next = higher
+    const sortedChapters = [...allChapters].sort((a: any, b: any) => parseFloat(String(a.chapter)) - parseFloat(String(b.chapter)));
+    const idx = sortedChapters.findIndex((c: any) => String(c.chapter_id) === chapterId);
+    const prevChapter = idx > 0 ? sortedChapters[idx - 1] : null;
+    const nextChapter = idx >= 0 && idx < sortedChapters.length - 1 ? sortedChapters[idx + 1] : null;
+    const currentChapterNum = idx >= 0 ? String(parseFloat(String(sortedChapters[idx]?.chapter ?? chapterId))) : chapterId;
+
+    const response = {
+      id: chapterId,
+      seriesId,
+      seriesTitle,
+      pages,
+      currentChapter: currentChapterNum,
+      prevChapterId: prevChapter ? String(prevChapter.chapter_id) : null,
+      prevToken: prevChapter ? String(prevChapter.token ?? "") : null,
+      nextChapterId: nextChapter ? String(nextChapter.chapter_id) : null,
+      nextToken: nextChapter ? String(nextChapter.token ?? "") : null,
+    };
+
+    // Cache full response for 2 hours
+    _flameCache.set(chCacheKey, { data: response, expiresAt: Date.now() + 2 * 60 * 60 * 1000 });
+
+    res.json(response);
   } catch (err) {
     console.error(`[FlameComics] chapter ${seriesId}/${chapterId} error:`, err);
     res.status(502).json({ error: "Failed to fetch chapter pages" });

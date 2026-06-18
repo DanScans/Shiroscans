@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "wouter";
+
+const _BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+function proxyImage(url: string): string {
+  if (!url) return "";
+  if (!url.startsWith("http")) return url;
+  return `${_BASE}/api/proxy-image?url=${encodeURIComponent(url)}`;
+}
 import { ChevronLeft, ChevronRight, Home, MessageSquare, Heart, Flame, Star, ThumbsUp, Frown, List } from "lucide-react";
 import CommentsSection from "@/components/CommentsSection";
 import {
@@ -167,7 +174,7 @@ export default function ReaderPage() {
             {(pages.pages as string[]).map((src: string, i: number) => (
               <img
                 key={i}
-                src={src}
+                src={proxyImage(src)}
                 alt={`Page ${i + 1}`}
                 className="w-full block"
                 loading="lazy"

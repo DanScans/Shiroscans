@@ -722,32 +722,60 @@ router.get("/manga/chapters/:provider/:seriesId/:chapterId", async (req, res): P
   const safeChapterId = decodeURIComponent(Array.isArray(req.params.chapterId) ? req.params.chapterId[0] : req.params.chapterId ?? "");
 
   if (safeProvider === "mangadex") {
+    // Check full-response cache — chapter pages never change after publication
+    const chCacheKey = `mdx:chpages:${safeChapterId}`;
+    const chCached = _apiCache.get(chCacheKey);
+    if (chCached && Date.now() < chCached.expiresAt) {
+      res.setHeader("X-Cache", "HIT");
+      res.json(chCached.data);
+      return;
+    }
+
     try {
-      const [serverRes, chapterRes] = await Promise.all([
+      // All 4 calls in parallel — feed + title use sub-caches so repeat chapter loads are instant
+      const [serverRes, chapterRes, feedRes, mangaRes] = await Promise.all([
         mdx<{ baseUrl: string; chapter: { hash: string; data: string[]; dataSaver: string[] } }>(`/at-home/server/${safeChapterId}`),
         mdx<{ data: MdxChapter }>(`/chapter/${safeChapterId}`),
+        withCache(`mdx:feed:${safeSeriesId}`, 30 * 60 * 1000, () =>
+          mdx<{ data: MdxChapter[]; total: number }>(`/manga/${safeSeriesId}/feed`, {
+            limit: 500, "translatedLanguage[]": ["en"], "order[chapter]": "desc",
+            "contentRating[]": ["safe", "suggestive", "erotica", "pornographic"],
+          })
+        ),
+        withCache(`mdx:title:${safeSeriesId}`, 60 * 60 * 1000, () =>
+          mdx<{ data: MdxManga }>(`/manga/${safeSeriesId}`, { "includes[]": ["cover_art"] })
+        ),
       ]);
+
       const { baseUrl, chapter } = serverRes;
       const pages = chapter[MDX_QUALITY].map((file) => `${baseUrl}/${MDX_QUALITY}/${chapter.hash}/${file}`);
       const currentChapter = chapterRes.data.attributes.chapter ?? safeChapterId;
 
-      const feedRes = await mdx<{ data: MdxChapter[] }>(`/manga/${safeSeriesId}/feed`, {
-        limit: 500, "translatedLanguage[]": ["en"], "order[chapter]": "desc",
-        "contentRating[]": ["safe", "suggestive", "erotica", "pornographic"],
-      });
       const allChapters = feedRes.data;
-      const idx = allChapters.findIndex((c) => c.id === safeChapterId);
-      const prevChapterId = idx >= 0 && idx < allChapters.length - 1 ? allChapters[idx + 1].id : null;
-      const nextChapterId = idx > 0 ? allChapters[idx - 1].id : null;
+      // Deduplicate same chapter numbers (same as series detail endpoint)
+      const seenNums = new Set<string>();
+      const dedupedChapters = allChapters.filter((c) => {
+        const n = c.attributes.chapter ?? "0";
+        if (seenNums.has(n)) return false;
+        seenNums.add(n);
+        return true;
+      });
+      const idx = dedupedChapters.findIndex((c) => c.id === safeChapterId);
+      const prevChapterId = idx >= 0 && idx < dedupedChapters.length - 1 ? dedupedChapters[idx + 1].id : null;
+      const nextChapterId = idx > 0 ? dedupedChapters[idx - 1].id : null;
 
-      const mangaRes = await mdx<{ data: MdxManga }>(`/manga/${safeSeriesId}`, { "includes[]": ["cover_art"] });
       const seriesTitle = mangaRes.data.attributes.title["en"] ?? Object.values(mangaRes.data.attributes.title)[0] ?? "";
 
-      res.json({
+      const response = {
         seriesId: safeSeriesId, chapterId: safeChapterId, provider: "mangadex",
         pages, currentChapter, prevChapterId, nextChapterId,
         seriesTitle, chapterTitle: chapterRes.data.attributes.title ?? null,
-      });
+      };
+
+      // Cache chapter pages for 2 hours — images never change after publication
+      _apiCache.set(chCacheKey, { data: response, expiresAt: Date.now() + 2 * 60 * 60 * 1000 });
+
+      res.json(response);
     } catch (err) {
       req.log.error({ err }, "MangaDex chapter pages failed");
       res.status(404).json({ error: "Chapter not found" });
@@ -885,10 +913,9 @@ router.get("/manga/tags", async (_req, res): Promise<void> => {
 // datacenter IPs, but browsers can load these directly with CORS).
 // All others are proxied server-side (needed for Referer-restricted scrapers).
 
-const BROWSER_DIRECT_HOSTS = new Set([
-  "uploads.mangadex.org",
-  "cmdxd98sb0x3yprd.mangadex.network",
-]);
+// Browser-direct hosts: browser fetches these directly via 302 redirect
+// Kept empty — all images are now proxied server-side for caching + reliability
+const BROWSER_DIRECT_HOSTS = new Set<string>([]);
 
 const PROXY_ALLOWED_HOSTS = new Set([
   // MangaDex
@@ -961,7 +988,15 @@ router.get("/proxy-image", async (req, res): Promise<void> => {
   }
 
   // Strict hostname allowlist — block any host not explicitly permitted
-  if (!PROXY_ALLOWED_HOSTS.has(parsed.hostname)) {
+  // MangaDex at-home CDN hostnames are dynamic (each chapter may use a different node),
+  // so we also allow any *.mangadex.org and *.mangadex.network hostname.
+  function isAllowedProxyHost(h: string): boolean {
+    if (PROXY_ALLOWED_HOSTS.has(h)) return true;
+    if (h === "mangadex.org" || h.endsWith(".mangadex.org")) return true;
+    if (h.endsWith(".mangadex.network")) return true;
+    return false;
+  }
+  if (!isAllowedProxyHost(parsed.hostname)) {
     res.status(403).end();
     return;
   }
@@ -988,6 +1023,10 @@ router.get("/proxy-image", async (req, res): Promise<void> => {
     const referer = rawUrl.includes("flamecomics") ? "https://flamecomics.xyz/" :
                     rawUrl.includes("asura") ? "https://asuracomic.net/" :
                     rawUrl.includes("weebcentral") ? "https://weebcentral.com/" :
+                    rawUrl.includes("mangafire") ? "https://mangafire.to/" :
+                    rawUrl.includes("mangadex") ? "https://mangadex.org/" :
+                    rawUrl.includes("mangadex.network") ? "https://mangadex.org/" :
+                    rawUrl.includes("mangadex.org") ? "https://mangadex.org/" :
                     "https://mangadex.org/";
     const upstream = await fetch(rawUrl, {
       headers: {
