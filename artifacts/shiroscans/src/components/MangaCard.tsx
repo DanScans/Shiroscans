@@ -2,11 +2,13 @@ import { Link } from "wouter";
 import { Star, BookOpen } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
+const BASE = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
+
 function proxyImage(url: string): string {
   if (!url) return "";
   if (!url.startsWith("http://") && !url.startsWith("https://")) return url;
   if (url.includes("uploads.mangadex.org")) return url;
-  return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+  return `${BASE}/api/proxy-image?url=${encodeURIComponent(url)}`;
 }
 
 interface MangaCardProps {
@@ -34,9 +36,13 @@ export default function MangaCard({
   latestChapter,
   isNew = false,
 }: MangaCardProps) {
+  const href = provider === "asurascans"
+    ? `/asura/series/${encodeURIComponent(id)}`
+    : `/series/${provider}/${encodeURIComponent(id)}`;
+
   return (
     <Link
-      href={`/series/${provider}/${encodeURIComponent(id)}`}
+      href={href}
       className="group relative block rounded-lg overflow-hidden bg-[#111118] border border-white/[0.06] hover:border-primary/35 transition-all duration-250 hover:shadow-lg hover:shadow-primary/10 hover:-translate-y-0.5"
       data-testid={`card-manga-${id}`}
     >

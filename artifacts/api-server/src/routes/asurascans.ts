@@ -600,25 +600,51 @@ router.get("/asurascans/browse", async (req, res): Promise<void> => {
   }
 });
 
-// GET /api/asurascans/latest
-router.get("/asurascans/latest", async (_req, res): Promise<void> => {
+// GET /api/asurascans/latest?page=1
+router.get("/asurascans/latest", async (req, res): Promise<void> => {
+  const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
   try {
-    const homeData = await withAsuraCache("asura:home", 5 * 60 * 1000, fetchHomeData);
-    res.json({ results: homeData.latest });
+    if (page === 1) {
+      const homeData = await withAsuraCache("asura:home", 5 * 60 * 1000, fetchHomeData);
+      res.json({ items: homeData.latest, hasMore: true, page: 1 });
+    } else {
+      const cacheKey = `asura:browse:latest:${page}`;
+      const data = await withAsuraCache(cacheKey, 5 * 60 * 1000, async () => {
+        const params = new URLSearchParams();
+        if (page > 1) params.set("page", String(page));
+        const html = await asuraFetch(`/browse?${params.toString()}`);
+        const items = extractBrowseItems(html);
+        return { items, hasMore: items.length >= 20, page };
+      });
+      res.json(data);
+    }
   } catch (err) {
     console.error("[AsuraScans] latest error:", err);
-    res.status(502).json({ error: "Failed to fetch latest", results: [] });
+    res.status(502).json({ error: "Failed to fetch latest", items: [], hasMore: false });
   }
 });
 
-// GET /api/asurascans/popular
-router.get("/asurascans/popular", async (_req, res): Promise<void> => {
+// GET /api/asurascans/popular?page=1
+router.get("/asurascans/popular", async (req, res): Promise<void> => {
+  const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
   try {
-    const homeData = await withAsuraCache("asura:home", 5 * 60 * 1000, fetchHomeData);
-    res.json({ results: homeData.popular });
+    if (page === 1) {
+      const homeData = await withAsuraCache("asura:home", 5 * 60 * 1000, fetchHomeData);
+      res.json({ items: homeData.popular, hasMore: false, page: 1 });
+    } else {
+      const cacheKey = `asura:browse:popular:${page}`;
+      const data = await withAsuraCache(cacheKey, 5 * 60 * 1000, async () => {
+        const params = new URLSearchParams();
+        if (page > 1) params.set("page", String(page));
+        const html = await asuraFetch(`/browse?${params.toString()}`);
+        const items = extractBrowseItems(html);
+        return { items, hasMore: items.length >= 20, page };
+      });
+      res.json(data);
+    }
   } catch (err) {
     console.error("[AsuraScans] popular error:", err);
-    res.status(502).json({ error: "Failed to fetch popular", results: [] });
+    res.status(502).json({ error: "Failed to fetch popular", items: [], hasMore: false });
   }
 });
 

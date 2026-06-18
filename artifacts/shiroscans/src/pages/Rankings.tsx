@@ -1,25 +1,24 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { BarChart2, Star, TrendingUp } from "lucide-react";
-import { useGetPopularManga } from "@workspace/api-client-react";
+import { BarChart2, Star, Zap } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+const BASE = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
 
 function proxyImage(url: string): string {
   if (!url) return "";
   if (!url.startsWith("http")) return url;
-  if (url.includes("uploads.mangadex.org")) return url;
   return `${BASE}/api/proxy-image?url=${encodeURIComponent(url)}`;
 }
 
-type Period = "weekly" | "monthly" | "alltime";
-
-const TABS: { id: Period; label: string }[] = [
-  { id: "weekly", label: "Weekly" },
-  { id: "monthly", label: "Monthly" },
-  { id: "alltime", label: "All Time" },
-];
+interface AsuraItem {
+  id: string;
+  title: string;
+  coverUrl: string;
+  status: string;
+  latestChapter?: number;
+  genres: string[];
+}
 
 function RankBadge({ rank }: { rank: number }) {
   const cls =
@@ -34,36 +33,34 @@ function RankBadge({ rank }: { rank: number }) {
   );
 }
 
-interface FeedItem {
-  id: string;
-  title: string;
-  coverImage: string;
-  provider: string;
-  rating?: number | null;
-  genres?: string[];
-  status?: string | null;
-  type?: string | null;
-}
+type Tab = "popular" | "latest" | "featured";
 
-const PERIOD_PROVIDERS: Record<Period, string> = {
-  weekly: "mangadex",
-  monthly: "mangadex",
-  alltime: "mangadex",
-};
+const TABS: { id: Tab; label: string }[] = [
+  { id: "popular", label: "Popular" },
+  { id: "featured", label: "Featured" },
+  { id: "latest", label: "Latest" },
+];
 
 export default function RankingsPage() {
-  const [period, setPeriod] = useState<Period>("weekly");
+  const [tab, setTab] = useState<Tab>("popular");
+  const [homeData, setHomeData] = useState<{ featured: AsuraItem[]; popular: AsuraItem[]; latest: AsuraItem[] } | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const { data, isLoading } = useGetPopularManga(
-    { provider: PERIOD_PROVIDERS[period], page: 1 },
-    { query: { queryKey: ["rankings", period], staleTime: 600_000 } }
-  );
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${BASE}/api/asurascans/home`)
+      .then((r) => r.ok ? r.json() : Promise.reject(r))
+      .then((d) => setHomeData(d))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
-  const items = (data?.items ?? []).slice(0, 20) as FeedItem[];
+  const items: AsuraItem[] = homeData
+    ? (tab === "popular" ? homeData.popular : tab === "featured" ? homeData.featured : homeData.latest)
+    : [];
 
   return (
     <div className="bg-[#07070d] min-h-screen">
-      {/* Header */}
       <div className="bg-gradient-to-b from-amber-500/10 to-transparent px-4 pt-6 pb-5">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-9 h-9 rounded-xl bg-amber-500/15 flex items-center justify-center">
@@ -71,7 +68,7 @@ export default function RankingsPage() {
           </div>
           <div>
             <h1 className="text-xl font-black text-white tracking-tight">Rankings</h1>
-            <p className="text-xs text-white/35">Top 20 most popular series</p>
+            <p className="text-xs text-white/35">Top series from AsuraScans</p>
           </div>
         </div>
 
@@ -79,9 +76,9 @@ export default function RankingsPage() {
           {TABS.map(({ id, label }) => (
             <button
               key={id}
-              onClick={() => setPeriod(id)}
+              onClick={() => setTab(id)}
               className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                period === id ? "bg-amber-500/80 text-white shadow" : "text-white/35 hover:text-white/60"
+                tab === id ? "bg-amber-500/80 text-white shadow" : "text-white/35 hover:text-white/60"
               }`}
             >
               {label}
@@ -91,7 +88,7 @@ export default function RankingsPage() {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 pb-8">
-        {isLoading ? (
+        {loading ? (
           <div className="space-y-4">
             {Array.from({ length: 10 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3 p-3">
@@ -104,29 +101,41 @@ export default function RankingsPage() {
               </div>
             ))}
           </div>
+        ) : items.length === 0 ? (
+          <div className="text-center py-20">
+            <p className="text-white/30">No series found</p>
+          </div>
         ) : (
           <div className="space-y-1">
-            {items.map((item, idx) => {
+            {items.slice(0, 20).map((item, idx) => {
               const rank = idx + 1;
               const rowBg = rank <= 3
                 ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.08]"
                 : idx % 2 === 0 ? "hover:bg-white/[0.03]" : "bg-white/[0.015] hover:bg-white/[0.04]";
               return (
                 <Link
-                  key={`${item.provider}-${item.id}`}
-                  href={`/series/${item.provider}/${encodeURIComponent(item.id)}`}
+                  key={item.id}
+                  href={`/asura/series/${encodeURIComponent(item.id)}`}
                   className={`group flex items-center gap-3 p-3 rounded-xl transition-colors ${rowBg}`}
                 >
                   <RankBadge rank={rank} />
                   <div className="w-12 h-16 rounded-lg overflow-hidden shrink-0 bg-[#1a1a2e]">
-                    {item.coverImage && (
+                    {item.coverUrl ? (
                       <img
-                        src={proxyImage(item.coverImage)}
+                        src={proxyImage(item.coverUrl)}
                         alt={item.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         loading="lazy"
-                        onError={(e) => { (e.target as HTMLImageElement).src = item.coverImage; }}
+                        onError={(e) => {
+                          const img = e.target as HTMLImageElement;
+                          img.src = item.coverUrl;
+                          img.onerror = () => { img.style.display = "none"; };
+                        }}
                       />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Zap className="w-4 h-4 text-primary/20" />
+                      </div>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -140,12 +149,10 @@ export default function RankingsPage() {
                       <span className="text-[10px] text-white/25 mt-1 inline-block">{item.status}</span>
                     )}
                   </div>
-                  {item.rating != null && (
+                  {item.latestChapter != null && (
                     <div className="shrink-0 flex items-center gap-1">
                       <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                      <span className="text-sm font-black text-amber-400">
-                        {typeof item.rating === "number" ? item.rating.toFixed(1) : item.rating}
-                      </span>
+                      <span className="text-sm font-black text-amber-400">Ch.{item.latestChapter}</span>
                     </div>
                   )}
                 </Link>
