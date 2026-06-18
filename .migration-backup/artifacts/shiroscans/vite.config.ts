@@ -65,12 +65,11 @@ export default defineConfig({
     allowedHosts: true,
     fs: {
       strict: true,
-    },
-    proxy: {
-      "/api": {
-        target: "http://localhost:8080",
-        changeOrigin: true,
-      },
+      allow: [
+        path.resolve(import.meta.dirname),
+        path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
+        path.resolve(import.meta.dirname, "..", "..", "node_modules"),
+      ],
     },
   },
   preview: {

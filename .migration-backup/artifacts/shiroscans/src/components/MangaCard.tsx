@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 function proxyImage(url: string): string {
   if (!url) return "";
   if (!url.startsWith("http://") && !url.startsWith("https://")) return url;
+  if (url.includes("uploads.mangadex.org")) return url;
   return `/api/proxy-image?url=${encodeURIComponent(url)}`;
 }
 

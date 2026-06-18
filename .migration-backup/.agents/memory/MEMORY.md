@@ -1,6 +1,5 @@
-- [MangaDex API setup](mangadex-api.md) — CoorenLabs DNS unresolvable from Replit; MangaDex + AniList work fine. Array param pitfall documented.
-- [ShiroScans Comick Stack](comick-stack.md) — Multi-source stack: Comick Source API (GooglyBlox) primary + MangaDex CDN; real source IDs differ from display names.
-- [comick-source-api local service](comick-local-service.md) — Next.js 14 dev startup takes 4s+; use configureWorkflow WITHOUT waitForPort or it always fails. next binary path: node_modules/next/dist/bin/next (no .bin symlink). comix.to blocks Replit IPs (404/403) so frontpage falls back to MangaDex. WeebCentral/mgeko/raven-scans work from Replit for search.
-- [ShiroScans brand color](shiroscans-brand.md) — Primary color #036443 = hsl(160, 94%, 20%); port conflict kill pattern documented.
-- [ShiroScans Reader Layout](shiroscans-reader-layout.md) — Reader is OUTSIDE main Layout (no Navbar/Footer/MobileNav). App.tsx routes /read/... directly to ReaderPage, all others to LayoutedRoutes. Reader has own top bar (fixed top-0) + auto-hide bottom Prev/Chapter/Next bar.
-- [ShiroScans Type Filtering](shiroscans-type-filtering.md) — MangaDex popular/latest now map type param to originalLanguage[]: Manhwa→ko, Manhua→zh/zh-hk, Manga→ja via typeToOriginalLanguage() in manga.ts. Comick uses client-side filtering.
+- [Comick local timeout](comick-timeout.md) — localhost:3001 never runs; local timeout must stay ≤1.5s or every API call stalls 25s before fallback
+- [MangaDex chapter caching](mdx-chapter-cache.md) — chapter pages cached 2h, feed 30min, title 1h; all 4 calls parallel
+- [MangaDex CDN proxy allowlist](mdx-cdn-allowlist.md) — at-home CDN hostnames are dynamic; use wildcard matching in isAllowedProxyHost()
+- [MangaDex cover images](mdx-cover-images.md) — uploads.mangadex.org blocks datacenter IPs (HTTP 400); fix: skip proxy for those URLs + no-referrer meta tag in index.html
+- [FlameComics chapter nav](flame-chapter-nav.md) — chapter response includes prevChapterId/prevToken/nextChapterId/nextToken for reader nav

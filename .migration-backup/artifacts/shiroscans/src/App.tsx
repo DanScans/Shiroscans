@@ -17,6 +17,10 @@ import ProfilePage from "@/pages/Profile";
 import SettingsPage from "@/pages/Settings";
 import LoginPage from "@/pages/Login";
 import RegisterPage from "@/pages/Register";
+import ManhwaPage from "@/pages/Manhwa";
+import FlameSeriesDetailPage from "@/pages/FlameSeriesDetail";
+import FlameReaderPage from "@/pages/FlameReader";
+import RankingsPage from "@/pages/Rankings";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -48,6 +52,9 @@ function LayoutedRoutes() {
         <Route path="/settings" component={SettingsPage} />
         <Route path="/login" component={LoginPage} />
         <Route path="/register" component={RegisterPage} />
+        <Route path="/manhwa" component={ManhwaPage} />
+        <Route path="/flame/series/:id" component={FlameSeriesDetailPage} />
+        <Route path="/rankings" component={RankingsPage} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
@@ -61,6 +68,7 @@ function App() {
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Switch>
             <Route path="/read/:provider/:seriesId/:chapterId" component={ReaderPage} />
+            <Route path="/flame/read/:seriesId/:chapterId" component={FlameReaderPage} />
             <Route component={LayoutedRoutes} />
           </Switch>
         </WouterRouter>

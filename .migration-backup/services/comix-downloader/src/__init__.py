@@ -1,1 +1,0 @@
-# Comix Downloader - Interactive CLI
