@@ -1,12 +1,11 @@
 import { Link, useLocation } from "wouter";
-import { Home, Bookmark, Search, Flame, BarChart2 } from "lucide-react";
+import { Home, Bookmark, Search, User } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/", icon: Home, label: "Home" },
-  { href: "/manhwa", icon: Flame, label: "Manhwa" },
-  { href: "/search", icon: Search, label: "Browse" },
-  { href: "/rankings", icon: BarChart2, label: "Rankings" },
-  { href: "/bookmarks", icon: Bookmark, label: "Saved" },
+  { href: "/search", icon: Search, label: "Search" },
+  { href: "/bookmarks", icon: Bookmark, label: "Bookmarks" },
+  { href: "/profile", icon: User, label: "Profile" },
 ];
 
 export default function MobileNav() {

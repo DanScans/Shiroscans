@@ -16,9 +16,11 @@ import {
   useGetMe, getGetMeQueryKey,
   useAddHistory,
   useAddReaction,
+  useGetMangaSeries, getGetMangaSeriesQueryKey
 } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const REACTIONS = [
   { id: "love", icon: Heart, label: "Love" },
@@ -43,6 +45,13 @@ export default function ReaderPage() {
       enabled: !!safeProvider && !!safeSeriesId && !!safeChapterId,
       queryKey: getGetChapterPagesQueryKey(safeProvider, safeSeriesId, safeChapterId),
     },
+  });
+  
+  const { data: series } = useGetMangaSeries(safeProvider, safeSeriesId, {
+    query: { 
+      enabled: !!safeProvider && !!safeSeriesId, 
+      queryKey: getGetMangaSeriesQueryKey(safeProvider, safeSeriesId) 
+    }
   });
 
   const { data: user } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
@@ -111,7 +120,7 @@ export default function ReaderPage() {
   const barCls = "transition-transform duration-300 ease-in-out";
 
   return (
-    <div className="bg-[#07070d] min-h-screen" data-testid="reader-page">
+    <div className="bg-[#07070d] min-h-[100dvh]" data-testid="reader-page">
       {/* Top bar */}
       <div
         className={`fixed top-0 left-0 right-0 z-50 bg-[#0A0A0F]/97 backdrop-blur-md border-b border-white/[0.06] ${barCls} ${barsVisible ? "translate-y-0" : "-translate-y-full"}`}
@@ -249,14 +258,26 @@ export default function ReaderPage() {
           </div>
 
           <div className="flex-[1.8]">
-            <Link
-              href={`/series/${safeProvider}/${encodeURIComponent(safeSeriesId)}`}
-              className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white/60 text-sm font-medium hover:bg-white/10 transition-all"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <List className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate text-sm">Ch. {pages?.currentChapter ?? "—"}</span>
-            </Link>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button 
+                  className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white/60 text-sm font-medium hover:bg-white/10 transition-all"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <List className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate text-sm">Ch. {pages?.currentChapter ?? "—"}</span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center" className="w-56 max-h-64 overflow-y-auto bg-card border-white/10" onClick={(e) => e.stopPropagation()}>
+                {series?.chapters?.map((ch) => (
+                  <DropdownMenuItem key={ch.id} asChild>
+                    <Link href={`/read/${safeProvider}/${encodeURIComponent(safeSeriesId)}/${encodeURIComponent(ch.id)}`} className="w-full cursor-pointer">
+                      Chapter {ch.number}
+                    </Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           <div className="flex-1">

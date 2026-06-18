@@ -335,21 +335,12 @@ function getScraperNameFromSource(source: string): string {
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
-// GET /manga/sources
-router.get("/manga/sources", async (_req, res): Promise<void> => {
-  try {
-    const data = await comickGet("/api/sources");
-    res.json(data);
-  } catch {
-    res.json([
-      { id: "comix", name: "Comick", status: "active", type: "aggregator" },
-      { id: "mangadex", name: "MangaDex", status: "active", type: "aggregator" },
-      { id: "asurascan", name: "AsuraScans", status: "active", type: "scanlation" },
-      { id: "weebcentral", name: "WeebCentral", status: "active", type: "aggregator" },
-      { id: "mangago", name: "Mangago", status: "active", type: "aggregator" },
-      { id: "mangakatana", name: "MangaKatana", status: "active", type: "aggregator" },
-    ]);
-  }
+// GET /manga/sources — only MangaDex and FlameComics are supported
+router.get("/manga/sources", (_req, res): void => {
+  res.json([
+    { id: "mangadex", name: "MangaDex", status: "active", type: "aggregator" },
+    { id: "flamecomics", name: "FlameComics", status: "active", type: "scanlation" },
+  ]);
 });
 
 // GET /manga/home — MangaDex latest + popular (cached 5 min)

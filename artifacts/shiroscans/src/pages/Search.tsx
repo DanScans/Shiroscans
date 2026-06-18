@@ -89,8 +89,8 @@ export default function SearchPage() {
   const [searching, setSearching] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
-  const suggestDebounce = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const suggestDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const [, setLocation] = useLocation();
 

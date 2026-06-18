@@ -38,7 +38,7 @@ export default function Navbar() {
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
-  const suggestDebounce = useRef<ReturnType<typeof setTimeout>>();
+  const suggestDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const queryClient = useQueryClient();
 
   const { data: user } = useGetMe({ query: { queryKey: getGetMeQueryKey(), retry: false, throwOnError: false } });

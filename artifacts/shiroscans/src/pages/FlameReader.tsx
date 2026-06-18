@@ -3,6 +3,7 @@ import { Link, useParams, useSearch } from "wouter";
 import { ArrowLeft, ChevronLeft, ChevronRight, List } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -24,6 +25,20 @@ interface ChapterData {
   nextToken: string | null;
 }
 
+interface FlameChapter {
+  id: string;
+  token: string;
+  number: number;
+  title: string;
+  releaseDate: string | null;
+}
+
+interface FlameSeries {
+  id: string;
+  title: string;
+  chapters: FlameChapter[];
+}
+
 export default function FlameReaderPage() {
   const { seriesId, chapterId } = useParams<{ seriesId: string; chapterId: string }>();
   const search = useSearch();
@@ -31,10 +46,11 @@ export default function FlameReaderPage() {
   const token = params.get("token") ?? "";
 
   const [chapterData, setChapterData] = useState<ChapterData | null>(null);
+  const [seriesData, setSeriesData] = useState<FlameSeries | null>(null);
   const [loading, setLoading] = useState(true);
   const [showUI, setShowUI] = useState(true);
   const [loadedImages, setLoadedImages] = useState<Set<number>>(new Set());
-  const hideTimer = useRef<ReturnType<typeof setTimeout>>();
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const { toast } = useToast();
 
   const safeSeriesId = seriesId ? decodeURIComponent(seriesId) : "";
@@ -51,6 +67,14 @@ export default function FlameReaderPage() {
       .catch(() => toast({ description: "Failed to load chapter pages", variant: "destructive" }))
       .finally(() => setLoading(false));
   }, [safeSeriesId, safeChapterId, token]);
+
+  useEffect(() => {
+    if (!safeSeriesId) return;
+    fetch(`${BASE}/api/flamecomics/series/${encodeURIComponent(safeSeriesId)}`)
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      .then(d => setSeriesData(d))
+      .catch(() => {});
+  }, [safeSeriesId]);
 
   useEffect(() => {
     const handleClick = () => {
@@ -75,7 +99,7 @@ export default function FlameReaderPage() {
   const barCls = `transition-all duration-300 ${showUI ? "opacity-100" : "opacity-0 pointer-events-none"}`;
 
   return (
-    <div className="bg-[#07070d] min-h-screen relative">
+    <div className="bg-[#07070d] min-h-[100dvh] relative">
       {/* Top bar */}
       <div
         className={`fixed top-0 left-0 right-0 z-50 bg-[#0A0A0F]/97 backdrop-blur-md border-b border-white/[0.06] flex items-center h-12 px-3 gap-2 ${barCls}`}
@@ -163,13 +187,26 @@ export default function FlameReaderPage() {
           </div>
 
           <div className="flex-[1.8]">
-            <Link
-              href={`/flame/series/${encodeURIComponent(safeSeriesId)}`}
-              className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white/60 text-sm font-medium hover:bg-white/10 transition-all"
-            >
-              <List className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate text-sm">Ch. {chapterData?.currentChapter ?? "—"}</span>
-            </Link>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button 
+                  className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white/60 text-sm font-medium hover:bg-white/10 transition-all"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <List className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate text-sm">Ch. {chapterData?.currentChapter ?? "—"}</span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center" className="w-56 max-h-64 overflow-y-auto bg-card border-white/10" onClick={(e) => e.stopPropagation()}>
+                {seriesData?.chapters?.map((ch) => (
+                  <DropdownMenuItem key={ch.id} asChild>
+                    <Link href={`/flame/read/${encodeURIComponent(safeSeriesId)}/${ch.id}?token=${encodeURIComponent(ch.token)}`} className="w-full cursor-pointer">
+                      Chapter {ch.number}
+                    </Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           <div className="flex-1">

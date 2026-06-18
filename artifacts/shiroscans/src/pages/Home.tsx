@@ -131,7 +131,7 @@ function SkeletonCard() {
 
 function HeroCarousel({ items }: { items: FlameItem[] }) {
   const [idx, setIdx] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval>>();
+  const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   useEffect(() => {
     if (items.length <= 1) return;

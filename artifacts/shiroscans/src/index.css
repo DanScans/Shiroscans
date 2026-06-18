@@ -97,53 +97,49 @@
 :root {
   --button-outline: rgba(0,0,0, .10);
   --badge-outline: rgba(0,0,0, .05);
-
-  /* Automatic computation of border around primary / danger buttons */
-  --opaque-button-border-intensity: -8; /* In terms of percentages */
-
-  /* Backgrounds applied on top of other backgrounds when hovered/active */
+  --opaque-button-border-intensity: -8;
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
 
-  --background: 240 33% 6%;
-  --foreground: 0 0% 100%;
-  --border: 240 17% 18%;
-  --card: 240 20% 9%;
-  --card-foreground: 0 0% 100%;
-  --card-border: 240 17% 18%;
-  --sidebar: 240 20% 9%;
-  --sidebar-foreground: 0 0% 100%;
-  --sidebar-border: 240 17% 18%;
-  --sidebar-primary: 160 94% 20%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 237 17% 13%;
-  --sidebar-accent-foreground: 0 0% 100%;
-  --sidebar-ring: 160 94% 20%;
-  --popover: 240 20% 9%;
-  --popover-foreground: 0 0% 100%;
-  --popover-border: 240 17% 18%;
-  --primary: 160 94% 20%;
+  --background: 240 30% 4%;
+  --foreground: 0 0% 95%;
+  --card: 240 24% 8%;
+  --card-foreground: 0 0% 95%;
+  --card-border: 240 20% 14%;
+  --border: 240 20% 14%;
+  --primary: 267 100% 63%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 237 17% 13%;
-  --secondary-foreground: 220 9% 68%;
-  --muted: 237 17% 13%;
-  --muted-foreground: 220 9% 68%;
-  --accent: 237 17% 13%;
+  --secondary: 240 20% 12%;
+  --secondary-foreground: 0 0% 70%;
+  --muted: 240 20% 12%;
+  --muted-foreground: 0 0% 55%;
+  --accent: 267 80% 25%;
   --accent-foreground: 0 0% 100%;
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-  --input: 240 17% 18%;
-  --ring: 160 94% 20%;
-  --chart-1: 160 94% 20%;
-  --chart-2: 237 17% 13%;
-  --chart-3: 240 20% 9%;
-  --chart-4: 240 33% 6%;
+  --input: 240 20% 14%;
+  --ring: 267 100% 63%;
+  --popover: 240 24% 8%;
+  --popover-foreground: 0 0% 95%;
+  --popover-border: 240 20% 14%;
+  --sidebar: 240 24% 8%;
+  --sidebar-foreground: 0 0% 95%;
+  --sidebar-border: 240 20% 14%;
+  --sidebar-primary: 267 100% 63%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 240 20% 12%;
+  --sidebar-accent-foreground: 0 0% 70%;
+  --sidebar-ring: 267 100% 63%;
+  --chart-1: 267 100% 63%;
+  --chart-2: 200 80% 60%;
+  --chart-3: 40 100% 60%;
+  --chart-4: 140 80% 45%;
   --chart-5: 0 84% 60%;
 
   --app-font-sans: 'Inter', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
-  --radius: .5rem; /* 8px */
+  --radius: .5rem;
   --shadow-2xs: 0px 2px 0px 0px hsl(240 33% 6% / 0.1);
   --shadow-xs: 0px 2px 0px 0px hsl(240 33% 6% / 0.1);
   --shadow-sm: 0px 2px 0px 0px hsl(240 33% 6% / 0.1), 0px 1px 2px -1px hsl(240 33% 6% / 0.1);
@@ -155,82 +151,55 @@
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 
-  /* Automatically computed borders - intensity can be controlled by the user by the --opaque-button-border-intensity setting */
-
-  /* Fallback for older browsers */
-  --sidebar-primary-border: hsl(var(--sidebar-primary));
   --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --sidebar-accent-border: hsl(var(--sidebar-accent));
   --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --primary-border: hsl(var(--primary));
   --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --secondary-border: hsl(var(--secondary));
   --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --muted-border: hsl(var(--muted));
   --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --accent-border: hsl(var(--accent));
   --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
-
-  /* Fallback for older browsers */
-  --destructive-border: hsl(var(--destructive));
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
 .dark {
   --button-outline: rgba(255,255,255, .10);
   --badge-outline: rgba(255,255,255, .05);
-
-  --opaque-button-border-intensity: 9;  /* In terms of percentages */
-
-  /* Backgrounds applied on top of other backgrounds when hovered/active */
+  --opaque-button-border-intensity: 9;
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
 
-  --background: 240 33% 6%;
-  --foreground: 0 0% 100%;
-  --border: 240 17% 18%;
-  --card: 240 20% 9%;
-  --card-foreground: 0 0% 100%;
-  --card-border: 240 17% 18%;
-  --sidebar: 240 20% 9%;
-  --sidebar-foreground: 0 0% 100%;
-  --sidebar-border: 240 17% 18%;
-  --sidebar-primary: 160 94% 20%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 237 17% 13%;
-  --sidebar-accent-foreground: 0 0% 100%;
-  --sidebar-ring: 160 94% 20%;
-  --popover: 240 20% 9%;
-  --popover-foreground: 0 0% 100%;
-  --popover-border: 240 17% 18%;
-  --primary: 160 94% 20%;
+  --background: 240 30% 4%;
+  --foreground: 0 0% 95%;
+  --card: 240 24% 8%;
+  --card-foreground: 0 0% 95%;
+  --card-border: 240 20% 14%;
+  --border: 240 20% 14%;
+  --primary: 267 100% 63%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 237 17% 13%;
-  --secondary-foreground: 220 9% 68%;
-  --muted: 237 17% 13%;
-  --muted-foreground: 220 9% 68%;
-  --accent: 237 17% 13%;
+  --secondary: 240 20% 12%;
+  --secondary-foreground: 0 0% 70%;
+  --muted: 240 20% 12%;
+  --muted-foreground: 0 0% 55%;
+  --accent: 267 80% 25%;
   --accent-foreground: 0 0% 100%;
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-
-  /* Used as the border around inputs. Dark mode: Should be a border that is light enough to have high contrast when rendered on a --card background. More contrast than standard --border */
-  --input: 240 17% 18%;
-  --ring: 160 94% 20%;
-  --chart-1: 160 94% 20%;
-  --chart-2: 237 17% 13%;
-  --chart-3: 240 20% 9%;
-  --chart-4: 240 33% 6%;
+  --input: 240 20% 14%;
+  --ring: 267 100% 63%;
+  --popover: 240 24% 8%;
+  --popover-foreground: 0 0% 95%;
+  --popover-border: 240 20% 14%;
+  --sidebar: 240 24% 8%;
+  --sidebar-foreground: 0 0% 95%;
+  --sidebar-border: 240 20% 14%;
+  --sidebar-primary: 267 100% 63%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 240 20% 12%;
+  --sidebar-accent-foreground: 0 0% 70%;
+  --sidebar-ring: 267 100% 63%;
+  --chart-1: 267 100% 63%;
+  --chart-2: 200 80% 60%;
+  --chart-3: 40 100% 60%;
+  --chart-4: 140 80% 45%;
   --chart-5: 0 84% 60%;
 
   --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.5);
