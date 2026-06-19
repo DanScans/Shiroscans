@@ -168,7 +168,7 @@ export default function Navbar() {
                     <Avatar className="w-6 h-6">
                       <AvatarImage src={user.avatarUrl ?? undefined} />
                       <AvatarFallback className="bg-primary/20 text-primary text-[10px]">
-                        {user.username[0]?.toUpperCase()}
+                        {user.username?.[0]?.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <span className="hidden sm:block text-sm text-white/90">{user.username}</span>

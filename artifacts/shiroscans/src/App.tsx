@@ -40,7 +40,7 @@ function LayoutedRoutes() {
     <Layout>
       <Switch>
         <Route path="/" component={HomePage} />
-        <Route path="/series/:slug" component={MangaFireSeriesDetailPage} />
+        <Route path="/series/:provider/:id" component={MangaFireSeriesDetailPage} />
         <Route path="/browse" component={BrowsePage} />
         <Route path="/search" component={SearchPage} />
         <Route path="/manhwa" component={ManhwaHomePage} />
@@ -65,7 +65,7 @@ function App() {
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Switch>
-            <Route path="/read/:chapterId" component={MangaFireReaderPage} />
+            <Route path="/read/:provider/:seriesId/:chapterId" component={MangaFireReaderPage} />
             <Route path="/manhwa/read/:slug/:chapterNum" component={ManhwaReaderPage} />
             <Route component={LayoutedRoutes} />
           </Switch>

@@ -15,25 +15,28 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function proxyImg(url: string): string {
   if (!url) return "";
   if (!url.startsWith("http")) return url;
+  if (url.includes("uploads.mangadex.org")) return url;
   return `${BASE}/api/proxy-image?url=${encodeURIComponent(url)}`;
 }
 
-interface AtsuItem {
+interface MangaItem {
   id: string;
-  slug: string;
   title: string;
-  coverUrl: string;
-  type: string;
-  status: string | null;
-  rating: number | null;
-  latestChapter: string | null;
-  genres: string[];
+  coverImage: string;
+  provider: string;
+  type?: string | null;
+  status?: string | null;
+  rating?: number | null;
+  latestChapter?: string | null;
+  genres?: string[];
+}
+
+function seriesHref(item: MangaItem): string {
+  return `/series/${encodeURIComponent(item.provider)}/${encodeURIComponent(item.id)}`;
 }
 
 const SORT_OPTIONS = [
   { value: "popular", label: "Popular" },
-  { value: "trending", label: "Trending" },
-  { value: "rating", label: "Rating" },
   { value: "newest", label: "Newest" },
   { value: "a-z", label: "A-Z" },
 ];
@@ -61,34 +64,34 @@ function FilterSection({ title, open, onToggle, children }: {
   );
 }
 
-function BrowseCard({ item }: { item: AtsuItem }) {
+function BrowseCard({ item }: { item: MangaItem }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: user } = useGetMe({ query: { queryKey: getGetMeQueryKey(), retry: false } });
   const { data: bookmarks } = useGetBookmarks({ query: { enabled: !!user, queryKey: getGetBookmarksQueryKey() } });
-  const isBookmarked = bookmarks?.some((b) => b.provider === "atsu" && b.seriesId === item.slug);
+  const isBookmarked = bookmarks?.some((b) => b.provider === item.provider && b.seriesId === item.id);
   const addBookmark = useAddBookmark({ mutation: { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetBookmarksQueryKey() }) } });
   const removeBookmark = useRemoveBookmark({ mutation: { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetBookmarksQueryKey() }) } });
 
   function toggleBookmark(e: React.MouseEvent) {
     e.preventDefault(); e.stopPropagation();
     if (!user) { toast({ description: "Login to bookmark", variant: "destructive" }); return; }
-    if (isBookmarked) removeBookmark.mutate({ provider: "atsu", seriesId: item.slug });
-    else addBookmark.mutate({ data: { provider: "atsu", seriesId: item.slug, title: item.title, coverImage: item.coverUrl, type: item.type, status: item.status ?? "Ongoing" } });
+    if (isBookmarked) removeBookmark.mutate({ provider: item.provider, seriesId: item.id });
+    else addBookmark.mutate({ data: { provider: item.provider, seriesId: item.id, title: item.title, coverImage: item.coverImage, type: item.type ?? "Manga", status: item.status ?? "Ongoing" } });
   }
 
   const statusCls = STATUS_COLOR[item.status ?? ""] ?? "text-white/40 bg-white/[0.05] border-white/[0.08]";
 
   return (
-    <Link href={`/series/${encodeURIComponent(item.slug)}`} className="group block">
+    <Link href={seriesHref(item)} className="group block">
       <div className="relative rounded-xl overflow-hidden bg-[#13131f]" style={{ aspectRatio: "2/3" }}>
-        {item.coverUrl ? (
-          <img src={proxyImg(item.coverUrl)} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+        {item.coverImage ? (
+          <img src={proxyImg(item.coverImage)} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-[#1a1a2e] to-[#13131f]" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-        {item.rating !== null && (
+        {item.rating != null && (
           <div className="absolute top-1.5 right-1.5 bg-black/75 text-yellow-400 text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
             ⭐ {item.rating.toFixed(1)}
           </div>
@@ -102,11 +105,8 @@ function BrowseCard({ item }: { item: AtsuItem }) {
           )}
         </div>
         <button onClick={toggleBookmark}
-          className={`mt-1.5 w-full py-1.5 rounded-lg text-[10px] font-bold border transition-all ${
-            isBookmarked ? "bg-violet-500/20 border-violet-500/30 text-violet-300" : "bg-white/[0.04] border-white/[0.08] text-white/40 hover:bg-white/[0.08]"
-          }`}>
-          <Bookmark className="w-2.5 h-2.5 inline mr-1" />
-          {isBookmarked ? "Saved" : "Save"}
+          className={`mt-1.5 w-full py-1.5 rounded-lg text-[10px] font-bold border transition-all ${isBookmarked ? "bg-violet-500/20 border-violet-500/30 text-violet-300" : "bg-white/[0.04] border-white/[0.08] text-white/40 hover:bg-white/[0.08]"}`}>
+          <Bookmark className="w-2.5 h-2.5 inline mr-1" />{isBookmarked ? "Saved" : "Save"}
         </button>
       </div>
     </Link>
@@ -124,32 +124,11 @@ function SkeletonBrowseCard() {
   );
 }
 
-function Pagination({ page, totalPages, onPage }: { page: number; totalPages: number; onPage: (p: number) => void }) {
-  const pages: number[] = [];
-  const start = Math.max(1, page - 2);
-  const end = Math.min(totalPages, start + 4);
-  for (let p = start; p <= end; p++) pages.push(p);
-  return (
-    <div className="flex items-center justify-center gap-1 pt-4 pb-2">
-      <button onClick={() => onPage(page - 1)} disabled={page <= 1}
-        className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-white/40 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-all">‹</button>
-      {pages.map((p) => (
-        <button key={p} onClick={() => onPage(p)}
-          className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${p === page ? "bg-primary text-white" : "text-white/40 hover:text-white hover:bg-white/[0.06]"}`}>
-          {p}
-        </button>
-      ))}
-      <button onClick={() => onPage(page + 1)} disabled={page >= totalPages}
-        className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-white/40 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-all">›</button>
-    </div>
-  );
-}
-
 export default function BrowsePage() {
-  const [items, setItems] = useState<AtsuItem[]>([]);
+  const [items, setItems] = useState<MangaItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("popular");
@@ -163,13 +142,27 @@ export default function BrowsePage() {
   const fetchData = useCallback(async (p: number) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ q: query || "*", page: String(p), sort, type: selectedType, status: selectedStatus });
-      const r = await fetch(`${BASE}/api/atsu/search?${params}`);
-      if (!r.ok) throw new Error("Failed");
-      const d = await r.json();
-      setItems(d.items ?? []);
-      setTotalPages(d.totalPages ?? 1);
-    } catch { setItems([]); }
+      if (query) {
+        const params = new URLSearchParams({ q: query, page: String(p) });
+        if (selectedType !== "All") params.set("type", selectedType);
+        if (selectedStatus !== "All") params.set("status", selectedStatus);
+        const r = await fetch(`${BASE}/api/manga/search?${params}`);
+        if (!r.ok) throw new Error("Failed");
+        const d = await r.json();
+        setItems(d.items ?? []);
+        setHasMore(d.hasMore ?? false);
+      } else {
+        const params = new URLSearchParams({ page: String(p) });
+        if (selectedType !== "All") params.set("type", selectedType);
+        if (selectedStatus !== "All") params.set("status", selectedStatus);
+        const endpoint = sort === "popular" ? "popular" : "latest";
+        const r = await fetch(`${BASE}/api/manga/${endpoint}?${params}`);
+        if (!r.ok) throw new Error("Failed");
+        const d = await r.json();
+        setItems(d.items ?? []);
+        setHasMore(d.hasMore ?? false);
+      }
+    } catch { setItems([]); setHasMore(false); }
     finally { setLoading(false); }
   }, [query, sort, selectedType, selectedStatus]);
 
@@ -259,12 +252,20 @@ export default function BrowsePage() {
             ? Array.from({ length: 12 }).map((_, i) => <SkeletonBrowseCard key={i} />)
             : items.length === 0
               ? <div className="col-span-3 sm:col-span-4 text-center py-16 text-white/30 text-sm">No results found</div>
-              : items.map((item) => <BrowseCard key={item.id || item.slug} item={item} />)
+              : items.map((item) => <BrowseCard key={item.id} item={item} />)
           }
         </div>
 
-        {!loading && totalPages > 1 && (
-          <Pagination page={page} totalPages={totalPages} onPage={(p) => { setPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+        {!loading && (
+          <div className="flex items-center justify-center gap-3 pt-4 pb-2">
+            <button onClick={() => { setPage((p) => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+              disabled={page <= 1}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-white/40 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-all">‹ Prev</button>
+            <span className="text-xs text-white/40 font-semibold">Page {page}</span>
+            <button onClick={() => { setPage((p) => p + 1); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+              disabled={!hasMore}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-white/40 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-all">Next ›</button>
+          </div>
         )}
       </div>
     </div>
