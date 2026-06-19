@@ -42,7 +42,7 @@ function LayoutedRoutes() {
   return (
     <Layout>
       <Switch>
-        <Route path="/" component={HomePage} />
+        <Route path="/" component={MangaHomePage} />
         <Route path="/series/:provider/:id" component={MangaFireSeriesDetailPage} />
         <Route path="/browse" component={BrowsePage} />
         <Route path="/search" component={SearchPage} />

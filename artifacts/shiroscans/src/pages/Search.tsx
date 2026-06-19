@@ -1,41 +1,28 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
-import { Search as SearchIcon, X, Loader2, Zap, BookOpen } from "lucide-react";
+import { Search as SearchIcon, X, Loader2, BookOpen } from "lucide-react";
 import { Link } from "wouter";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-function proxyImage(url: string): string {
+function proxyImg(url: string): string {
   if (!url) return "";
-  if (!url.startsWith("http://") && !url.startsWith("https://")) return url;
-  if (url.includes("uploads.mangadex.org")) return url;
-  return `${BASE}/api/proxy-image?url=${encodeURIComponent(url)}`;
+  if (!url.startsWith("http")) return url;
+  return `${BASE}/api/weebcentral/proxy-image?url=${encodeURIComponent(url)}`;
 }
 
-interface SearchItem {
+interface WCSeries {
   id: string;
   title: string;
-  coverImage: string;
-  provider: string;
-  type?: string | null;
-  status?: string | null;
-  genres?: string[];
+  coverUrl: string;
+  type: string;
+  status: string;
+  genres: string[];
+  latestChapter: string | null;
 }
 
-interface SuggestionItem {
-  id: string;
-  title: string;
-  coverImage: string;
-  provider: string;
-  type?: string | null;
-}
-
-function ResultCard({ item }: { item: SearchItem }) {
+function ResultCard({ item }: { item: WCSeries }) {
   const [imgError, setImgError] = useState(false);
-  const isAsura = item.provider === "asurascans";
-  const href = isAsura
-    ? `/asura/series/${encodeURIComponent(item.id)}`
-    : `/series/${item.provider}/${encodeURIComponent(item.id)}`;
 
   const typeColor =
     item.type === "Manhwa" ? "text-orange-400 bg-orange-500/10 border-orange-500/20" :
@@ -43,11 +30,14 @@ function ResultCard({ item }: { item: SearchItem }) {
     "text-primary/80 bg-primary/10 border-primary/20";
 
   return (
-    <Link href={href} className="group flex gap-3 p-3 rounded-xl hover:bg-white/[0.04] transition-colors border border-transparent hover:border-white/[0.06]">
+    <Link
+      href={`/manga/series/${item.id}`}
+      className="group flex gap-3 p-3 rounded-xl hover:bg-white/[0.04] transition-colors border border-transparent hover:border-white/[0.06]"
+    >
       <div className="w-16 rounded-lg overflow-hidden shrink-0 bg-[#13131f]" style={{ height: "88px" }}>
-        {item.coverImage && !imgError ? (
+        {item.coverUrl && !imgError ? (
           <img
-            src={proxyImage(item.coverImage)}
+            src={proxyImg(item.coverUrl)}
             alt={item.title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             loading="lazy"
@@ -55,7 +45,7 @@ function ResultCard({ item }: { item: SearchItem }) {
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            {isAsura ? <Zap className="w-5 h-5 text-primary/30" /> : <BookOpen className="w-5 h-5 text-primary/20" />}
+            <BookOpen className="w-5 h-5 text-primary/20" />
           </div>
         )}
       </div>
@@ -79,13 +69,34 @@ function ResultCard({ item }: { item: SearchItem }) {
   );
 }
 
+function SuggestionRow({ item, onSelect }: { item: WCSeries; onSelect: () => void }) {
+  const [imgError, setImgError] = useState(false);
+  return (
+    <Link
+      href={`/manga/series/${item.id}`}
+      className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.06] transition-colors border-b border-white/[0.04] last:border-0"
+      onMouseDown={(e) => { e.preventDefault(); onSelect(); }}
+    >
+      <div className="w-8 h-10 rounded-md overflow-hidden shrink-0 bg-[#1a1a2e]">
+        {item.coverUrl && !imgError ? (
+          <img src={proxyImg(item.coverUrl)} alt="" className="w-full h-full object-cover" loading="lazy" onError={() => setImgError(true)} />
+        ) : null}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-white/90 font-semibold line-clamp-1">{item.title}</p>
+        <p className="text-[10px] text-white/30 mt-0.5">{item.type || "Manga"}</p>
+      </div>
+    </Link>
+  );
+}
+
 export default function SearchPage() {
   const params = new URLSearchParams(window.location.search);
   const initialQ = params.get("q") ?? "";
 
   const [query, setQuery] = useState(initialQ);
-  const [results, setResults] = useState<SearchItem[]>([]);
-  const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
+  const [results, setResults] = useState<WCSeries[]>([]);
+  const [suggestions, setSuggestions] = useState<WCSeries[]>([]);
   const [searching, setSearching] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
@@ -97,45 +108,15 @@ export default function SearchPage() {
   const runSearch = useCallback((q: string) => {
     if (!q.trim()) { setResults([]); return; }
     setSearching(true);
-
-    function fetchWithTimeout(url: string, ms: number): Promise<Response> {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), ms);
-      return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
-    }
-
-    Promise.allSettled([
-      fetchWithTimeout(`${BASE}/api/manga/search?q=${encodeURIComponent(q)}&provider=mangadex`, 8000)
-        .then((r) => r.ok ? r.json() : { items: [] })
-        .catch(() => ({ items: [] })),
-      fetchWithTimeout(`${BASE}/api/asurascans/search?q=${encodeURIComponent(q)}`, 8000)
-        .then((r) => r.ok ? r.json() : { results: [] })
-        .catch(() => ({ results: [] })),
-    ]).then(([mangaResult, asuraResult]) => {
-      const mangaData = mangaResult.status === "fulfilled" ? mangaResult.value : { items: [] };
-      const asuraData = asuraResult.status === "fulfilled" ? asuraResult.value : { results: [] };
-      const manga = (mangaData.items ?? []) as SearchItem[];
-      const asura = (asuraData.results ?? []).map((item: any) => ({
-        id: item.id,
-        title: item.title,
-        coverImage: item.coverUrl,
-        provider: "asurascans",
-        type: "Manhwa",
-        status: item.status,
-        genres: item.genres ?? [],
-      })) as SearchItem[];
-      const seen = new Set<string>();
-      const merged: SearchItem[] = [];
-      for (const item of [...asura, ...manga]) {
-        const key = item.title.toLowerCase().replace(/\s+/g, "");
-        if (!seen.has(key)) { seen.add(key); merged.push(item); }
-      }
-      setResults(merged);
-    }).finally(() => setSearching(false));
+    fetch(`${BASE}/api/weebcentral/search?q=${encodeURIComponent(q)}`)
+      .then((r) => r.ok ? r.json() : { items: [] })
+      .catch(() => ({ items: [] }))
+      .then((d) => setResults(d.items ?? []))
+      .finally(() => setSearching(false));
   }, []);
 
   useEffect(() => {
-    if (initialQ) { runSearch(initialQ); }
+    if (initialQ) runSearch(initialQ);
     inputRef.current?.focus();
   }, []);
 
@@ -156,27 +137,12 @@ export default function SearchPage() {
 
     setSuggestLoading(true);
     suggestDebounce.current = setTimeout(() => {
-      Promise.all([
-        fetch(`${BASE}/api/manga/suggestions?q=${encodeURIComponent(val.trim())}`).then((r) => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
-        fetch(`${BASE}/api/asurascans/search?q=${encodeURIComponent(val.trim())}`).then((r) => r.ok ? r.json() : { results: [] }).catch(() => ({ results: [] })),
-      ]).then(([mdxSuggest, asuraSuggest]) => {
-        const mdx = (mdxSuggest.items ?? []).slice(0, 4) as SuggestionItem[];
-        const asura = (asuraSuggest.results ?? []).slice(0, 4).map((item: any) => ({
-          id: item.id,
-          title: item.title,
-          coverImage: item.coverUrl,
-          provider: "asurascans",
-          type: "Manhwa",
-        })) as SuggestionItem[];
-        const seen = new Set<string>();
-        const merged: SuggestionItem[] = [];
-        for (const item of [...asura, ...mdx]) {
-          const key = item.title.toLowerCase().replace(/\s+/g, "");
-          if (!seen.has(key)) { seen.add(key); merged.push(item); }
-        }
-        setSuggestions(merged.slice(0, 7));
-      }).finally(() => setSuggestLoading(false));
-    }, 250);
+      fetch(`${BASE}/api/weebcentral/search?q=${encodeURIComponent(val.trim())}`)
+        .then((r) => r.ok ? r.json() : { items: [] })
+        .catch(() => ({ items: [] }))
+        .then((d) => setSuggestions((d.items ?? []).slice(0, 7)))
+        .finally(() => setSuggestLoading(false));
+    }, 300);
 
     debounceRef.current = setTimeout(() => {
       runSearch(val.trim());
@@ -217,7 +183,6 @@ export default function SearchPage() {
               placeholder="Search manga, manhwa, series..."
               autoComplete="off"
               className="w-full bg-[#13131f] border border-white/[0.08] rounded-2xl pl-11 pr-11 py-3.5 text-white placeholder-white/25 focus:outline-none focus:border-primary/40 focus:bg-[#1a1a2e]/60 text-sm transition-all"
-              data-testid="input-search"
             />
             {query && (
               <button type="button" onClick={clearSearch} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors p-1">
@@ -234,31 +199,9 @@ export default function SearchPage() {
                 </div>
               ) : suggestions.length > 0 ? (
                 <div>
-                  {suggestions.map((item) => {
-                    const isAsura = item.provider === "asurascans";
-                    const href = isAsura
-                      ? `/asura/series/${encodeURIComponent(item.id)}`
-                      : `/series/${item.provider}/${encodeURIComponent(item.id)}`;
-                    return (
-                      <Link
-                        key={`${item.provider}-${item.id}`}
-                        href={href}
-                        className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.06] transition-colors border-b border-white/[0.04] last:border-0"
-                        onMouseDown={(e) => e.preventDefault()}
-                      >
-                        <div className="w-8 h-10 rounded-md overflow-hidden shrink-0 bg-[#1a1a2e]">
-                          {item.coverImage ? (
-                            <img src={proxyImage(item.coverImage)} alt="" className="w-full h-full object-cover" loading="lazy" />
-                          ) : null}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-white/90 font-semibold line-clamp-1">{item.title}</p>
-                          <p className="text-[10px] text-white/30 mt-0.5">{item.type ?? "—"}</p>
-                        </div>
-                        {isAsura && <Zap className="w-3 h-3 text-primary/60 shrink-0" />}
-                      </Link>
-                    );
-                  })}
+                  {suggestions.map((item) => (
+                    <SuggestionRow key={item.id} item={item} onSelect={() => setShowSuggestions(false)} />
+                  ))}
                   <button
                     type="submit"
                     className="w-full flex items-center gap-2 px-4 py-3 text-sm text-primary/80 hover:text-primary hover:bg-white/[0.04] transition-colors font-semibold"
@@ -277,13 +220,13 @@ export default function SearchPage() {
         {searching ? (
           <div className="flex items-center justify-center gap-2 py-16 text-white/40">
             <Loader2 className="w-5 h-5 animate-spin" />
-            <span className="text-sm">Searching...</span>
+            <span className="text-sm">Searching WeebCentral...</span>
           </div>
         ) : results.length > 0 ? (
           <>
             <p className="text-xs text-white/35 mb-3 px-1">{results.length} results for <span className="text-white/60">"{query}"</span></p>
             <div className="space-y-1">
-              {results.map((item) => <ResultCard key={`${item.provider}-${item.id}`} item={item} />)}
+              {results.map((item) => <ResultCard key={item.id} item={item} />)}
             </div>
           </>
         ) : query && !searching ? (
@@ -295,7 +238,7 @@ export default function SearchPage() {
         ) : (
           <div className="text-center py-16">
             <SearchIcon className="w-10 h-10 text-white/10 mx-auto mb-3" />
-            <p className="text-white/35 text-sm">Search across manga & manhwa</p>
+            <p className="text-white/35 text-sm">Search WeebCentral manga & manhwa</p>
           </div>
         )}
       </div>

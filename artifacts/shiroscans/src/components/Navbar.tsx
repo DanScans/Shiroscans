@@ -19,7 +19,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 function proxyImage(url: string): string {
   if (!url) return "";
   if (!url.startsWith("http://") && !url.startsWith("https://")) return url;
-  return `${BASE}/api/proxy-image?url=${encodeURIComponent(url)}`;
+  return `${BASE}/api/weebcentral/proxy-image?url=${encodeURIComponent(url)}`;
 }
 
 interface SuggestionItem {
@@ -76,14 +76,15 @@ export default function Navbar() {
     suggestDebounce.current = setTimeout(() => {
       const searchUrl = isManhwa
         ? `${BASE}/api/asurascans/search?q=${encodeURIComponent(val.trim())}`
-        : `${BASE}/api/atsu/search?q=${encodeURIComponent(val.trim())}&page=1`;
+        : `${BASE}/api/weebcentral/search?q=${encodeURIComponent(val.trim())}`;
       fetch(searchUrl)
         .then((r) => r.ok ? r.json() : { items: [] })
         .catch(() => ({ items: [] }))
-        .then((data: { items: Array<{ slug: string; title: string; coverUrl: string; type?: string; id?: string }> }) => {
-          setSuggestions((data.items ?? []).slice(0, 7).map((item) => ({
-            id: item.id ?? item.slug,
-            slug: item.slug,
+        .then((data: { items?: Array<{ id: string; title: string; coverUrl: string; type?: string }>; results?: Array<{ id: string; title: string; coverUrl: string; type?: string }> }) => {
+          const raw = data.items ?? data.results ?? [];
+          setSuggestions(raw.slice(0, 7).map((item) => ({
+            id: item.id,
+            slug: item.id,
             title: item.title,
             coverUrl: item.coverUrl,
             type: item.type,
@@ -99,7 +100,7 @@ export default function Navbar() {
     if (isManhwa) {
       setLocation(`/manhwa/series/${encodeURIComponent(item.slug)}`);
     } else {
-      setLocation(`/series/${encodeURIComponent(item.id || item.slug)}`);
+      setLocation(`/manga/series/${item.id}`);
     }
   }
 
