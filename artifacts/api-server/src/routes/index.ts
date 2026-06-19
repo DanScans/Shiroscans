@@ -10,10 +10,8 @@ import profileRouter from "./profile";
 import asurascansRouter from "./asurascans";
 import ratingsRouter from "./ratings";
 import commentsRouter from "./comments";
-import mangaplusRouter from "./mangaplus";
-import mangadexRouter from "./mangadex";
 import mangafireRouter from "./mangafire";
-import atsuRouter from "./atsu";
+import weebcentralRouter from "./weebcentral";
 
 const router: IRouter = Router();
 
@@ -28,9 +26,7 @@ router.use(profileRouter);
 router.use(asurascansRouter);
 router.use(ratingsRouter);
 router.use(commentsRouter);
-router.use(mangaplusRouter);
-router.use(mangadexRouter);
 router.use(mangafireRouter);
-router.use(atsuRouter);
+router.use(weebcentralRouter);
 
 export default router;

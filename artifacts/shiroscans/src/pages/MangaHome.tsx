@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { Link } from "wouter";
-import { ChevronRight, TrendingUp, Zap, ChevronLeft, BookOpen, Search } from "lucide-react";
+import { ChevronRight, TrendingUp, ChevronLeft, BookOpen, Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,56 +8,63 @@ import { useToast } from "@/hooks/use-toast";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-// MangaDex covers load directly from CDN (browser CORS is fine)
-function mdxImage(url: string): string {
-  return url ?? "";
+function proxyImg(url: string): string {
+  if (!url) return "";
+  return `${BASE}/api/weebcentral/proxy-image?url=${encodeURIComponent(url)}`;
 }
 
-interface MDXManga {
+interface WCSeries {
   id: string;
   title: string;
-  description: string;
   coverUrl: string;
-  author: string;
+  type: string;
   status: string;
-  year: number | null;
   genres: string[];
-  lastChapter: string | null;
+  latestChapter: string | null;
+  description?: string;
+  authors?: string[];
 }
 
-function MangaCard({ item, size = "sm" }: { item: MDXManga; size?: "sm" | "lg" }) {
+function MangaCard({ item, size = "sm" }: { item: WCSeries; size?: "sm" | "lg" }) {
   const [imgError, setImgError] = useState(false);
   return (
     <Link href={`/manga/series/${item.id}`} className="group block">
       <div
-        className="relative rounded-xl overflow-hidden bg-[#13131f] shadow-lg group-hover:shadow-primary/10 transition-all duration-300 group-hover:scale-[1.02]"
+        className="relative rounded-xl overflow-hidden bg-[#13131f] shadow-lg group-hover:shadow-primary/10 will-change-transform transition-transform duration-200 ease-out group-hover:scale-[1.02]"
         style={{ aspectRatio: "2/3" }}
       >
         {item.coverUrl && !imgError ? (
           <img
-            src={mdxImage(item.coverUrl)}
+            src={proxyImg(item.coverUrl)}
             alt={item.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ease-out"
             loading="lazy"
             onError={() => setImgError(true)}
           />
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-[#1a2a2e] to-[#1a1a2e] flex items-center justify-center">
+          <div className="w-full h-full bg-gradient-to-br from-[#0d2e22] to-[#1a1a2e] flex items-center justify-center">
             <BookOpen className="w-6 h-6 text-primary/20" />
           </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-        {item.lastChapter && (
+        {item.latestChapter && (
           <div className="absolute bottom-1.5 left-1.5 text-[9px] font-bold bg-black/70 text-white/80 px-1.5 py-0.5 rounded">
-            Ch.{item.lastChapter}
+            {item.latestChapter}
+          </div>
+        )}
+        {item.type && item.type !== "Manga" && (
+          <div className="absolute top-1.5 right-1.5 text-[9px] font-bold bg-primary/80 text-white px-1.5 py-0.5 rounded">
+            {item.type}
           </div>
         )}
       </div>
       <div className="mt-1.5 px-0.5">
-        <h3 className={`font-bold text-white/90 group-hover:text-primary transition-colors line-clamp-2 leading-snug ${size === "lg" ? "text-sm" : "text-xs"}`}>
+        <h3 className={`font-bold text-white/90 group-hover:text-primary transition-colors duration-150 line-clamp-2 leading-snug ${size === "lg" ? "text-sm" : "text-xs"}`}>
           {item.title}
         </h3>
-        {item.author && <p className="text-[10px] text-white/30 truncate mt-0.5">{item.author}</p>}
+        {item.genres && item.genres.length > 0 && (
+          <p className="text-[10px] text-white/30 truncate mt-0.5">{item.genres.slice(0, 2).join(", ")}</p>
+        )}
       </div>
     </Link>
   );
@@ -73,7 +80,7 @@ function SkeletonCard() {
   );
 }
 
-function HeroCarousel({ items }: { items: MDXManga[] }) {
+function HeroCarousel({ items }: { items: WCSeries[] }) {
   const [idx, setIdx] = useState(0);
   const touchStartX = useRef<number>(0);
   const touchStartY = useRef<number>(0);
@@ -91,9 +98,7 @@ function HeroCarousel({ items }: { items: MDXManga[] }) {
   function handleTouchEnd(e: React.TouchEvent) {
     const dx = e.changedTouches[0]!.clientX - touchStartX.current;
     const dy = Math.abs(e.changedTouches[0]!.clientY - touchStartY.current);
-    if (Math.abs(dx) > 40 && dy < 60) {
-      if (dx > 0) prev(); else next();
-    }
+    if (Math.abs(dx) > 40 && dy < 60) { if (dx > 0) prev(); else next(); }
   }
 
   const visible = [-2, -1, 0, 1, 2];
@@ -116,13 +121,15 @@ function HeroCarousel({ items }: { items: MDXManga[] }) {
           return (
             <div
               key={`${i}-${offset}`}
-              className="absolute top-0 bottom-0 flex items-center transition-all duration-500 ease-out cursor-pointer"
+              className="absolute top-0 bottom-0 flex items-center cursor-pointer"
               style={{
                 left: "50%",
                 transform: `translateX(calc(-50% + ${offset * 58}vw)) scale(${scale})`,
                 zIndex, opacity,
                 width: "min(52vw, 210px)",
                 filter: offset === 0 ? "none" : "brightness(0.4)",
+                transition: "transform 350ms cubic-bezier(0.25,0.46,0.45,0.94), opacity 350ms ease",
+                willChange: "transform",
               }}
               onClick={() => { if (offset !== 0) setIdx(i); }}
             >
@@ -133,9 +140,11 @@ function HeroCarousel({ items }: { items: MDXManga[] }) {
               >
                 <div className="relative rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: "2/3" }}>
                   {item.coverUrl ? (
-                    <img src={mdxImage(item.coverUrl)} alt={item.title} className="w-full h-full object-cover" loading="eager" />
+                    <img src={proxyImg(item.coverUrl)} alt={item.title} className="w-full h-full object-cover" loading="eager" />
                   ) : (
-                    <div className="w-full h-full bg-[#1a1a2e] flex items-center justify-center"><BookOpen className="w-8 h-8 text-primary/20" /></div>
+                    <div className="w-full h-full bg-gradient-to-br from-[#0d2e22] to-[#1a1a2e] flex items-center justify-center">
+                      <BookOpen className="w-8 h-8 text-primary/20" />
+                    </div>
                   )}
                 </div>
               </Link>
@@ -146,12 +155,12 @@ function HeroCarousel({ items }: { items: MDXManga[] }) {
 
       <div className="text-center pt-2 pb-1 px-6">
         <Link href={`/manga/series/${active.id}`}>
-          <h2 className="text-white font-black text-base leading-tight line-clamp-1 hover:text-primary transition-colors">{active.title}</h2>
+          <h2 className="text-white font-black text-base leading-tight line-clamp-1 hover:text-primary transition-colors duration-150">{active.title}</h2>
         </Link>
       </div>
 
       <div className="flex items-center justify-center gap-3 pb-4 px-4">
-        <button onClick={prev} className="p-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-white/50 hover:text-white transition-all">
+        <button onClick={prev} className="p-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-white/50 hover:text-white transition-all duration-150">
           <ChevronLeft className="w-4 h-4" />
         </button>
         <div className="flex items-center gap-1">
@@ -160,12 +169,12 @@ function HeroCarousel({ items }: { items: MDXManga[] }) {
             const isActive = dotIdx === idx;
             return (
               <button key={i} onClick={() => setIdx(dotIdx)}
-                className={`rounded-full transition-all duration-300 ${isActive ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-white/25"}`}
+                className={`rounded-full transition-all duration-200 ${isActive ? "w-5 h-1.5 bg-primary" : "w-1.5 h-1.5 bg-white/25"}`}
               />
             );
           })}
         </div>
-        <button onClick={next} className="p-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-white/50 hover:text-white transition-all">
+        <button onClick={next} className="p-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-white/50 hover:text-white transition-all duration-150">
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
@@ -177,19 +186,19 @@ type TabType = "home" | "popular" | "search";
 
 export default function MangaHomePage() {
   const [tab, setTab] = useState<TabType>("home");
-  const [homeData, setHomeData] = useState<{ featured: MDXManga[]; popular: MDXManga[]; latest: MDXManga[] } | null>(null);
+  const [homeData, setHomeData] = useState<{ featured: WCSeries[]; popular: WCSeries[]; latest: WCSeries[] } | null>(null);
   const [homeLoading, setHomeLoading] = useState(true);
-  const [popularData, setPopularData] = useState<{ results: MDXManga[]; page: number; totalPages: number; hasMore: boolean } | null>(null);
+  const [popularData, setPopularData] = useState<{ items: WCSeries[]; page: number; hasMore: boolean } | null>(null);
   const [popularLoading, setPopularLoading] = useState(false);
   const [popularPage, setPopularPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<MDXManga[]>([]);
+  const [searchResults, setSearchResults] = useState<WCSeries[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     setHomeLoading(true);
-    fetch(`${BASE}/api/mangadex/home`)
+    fetch(`${BASE}/api/weebcentral/home`)
       .then((r) => r.ok ? r.json() : Promise.reject(r))
       .then((d) => setHomeData(d))
       .catch(() => toast({ description: "Failed to load manga content", variant: "destructive" }))
@@ -198,7 +207,7 @@ export default function MangaHomePage() {
 
   const fetchPopular = (page: number) => {
     setPopularLoading(true);
-    fetch(`${BASE}/api/mangadex/popular?page=${page}`)
+    fetch(`${BASE}/api/weebcentral/popular?page=${page}`)
       .then((r) => r.ok ? r.json() : Promise.reject(r))
       .then((d) => setPopularData(d))
       .catch(() => toast({ description: "Failed to load manga", variant: "destructive" }))
@@ -206,16 +215,20 @@ export default function MangaHomePage() {
   };
 
   useEffect(() => {
+    if (tab === "popular" && !popularData) fetchPopular(popularPage);
+  }, [tab]);
+
+  useEffect(() => {
     if (tab === "popular") fetchPopular(popularPage);
-  }, [tab, popularPage]);
+  }, [popularPage]);
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     setSearchLoading(true);
-    fetch(`${BASE}/api/mangadex/search?q=${encodeURIComponent(searchQuery.trim())}`)
+    fetch(`${BASE}/api/weebcentral/search?q=${encodeURIComponent(searchQuery.trim())}`)
       .then((r) => r.ok ? r.json() : Promise.reject(r))
-      .then((d: { results: MDXManga[] }) => setSearchResults(d.results))
+      .then((d: { items: WCSeries[] }) => setSearchResults(d.items ?? []))
       .catch(() => toast({ description: "Search failed", variant: "destructive" }))
       .finally(() => setSearchLoading(false));
   }
@@ -247,7 +260,7 @@ export default function MangaHomePage() {
               <button
                 key={id}
                 onClick={() => setTab(id)}
-                className={`flex items-center gap-1.5 flex-1 justify-center py-1.5 rounded-md text-xs font-bold transition-all ${tab === id ? "bg-primary text-white shadow" : "text-white/40 hover:text-white/70"}`}
+                className={`flex items-center gap-1.5 flex-1 justify-center py-1.5 rounded-md text-xs font-bold transition-all duration-150 ${tab === id ? "bg-primary text-white shadow" : "text-white/40 hover:text-white/70"}`}
               >
                 {icon}{label}
               </button>
@@ -260,9 +273,9 @@ export default function MangaHomePage() {
             <section className="pt-2">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-orange-400" /> Popular Manga
+                  <TrendingUp className="w-4 h-4 text-orange-400" /> Trending
                 </h2>
-                <button onClick={() => setTab("popular")} className="flex items-center gap-0.5 text-xs text-primary font-semibold hover:text-primary/80">
+                <button onClick={() => setTab("popular")} className="flex items-center gap-0.5 text-xs text-primary font-semibold hover:text-primary/80 transition-colors duration-150">
                   View all <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -295,7 +308,7 @@ export default function MangaHomePage() {
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
               {popularLoading
                 ? Array.from({ length: 12 }).map((_, i) => <SkeletonCard key={i} />)
-                : (popularData?.results ?? []).map((item) => <MangaCard key={item.id} item={item} />)
+                : (popularData?.items ?? []).map((item) => <MangaCard key={item.id} item={item} />)
               }
             </div>
 
@@ -304,17 +317,15 @@ export default function MangaHomePage() {
                 <button
                   disabled={popularPage === 1}
                   onClick={() => { setPopularPage((p) => p - 1); window.scrollTo(0, 0); }}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold border transition-all ${popularPage === 1 ? "border-white/5 text-white/20 cursor-not-allowed" : "border-white/10 text-white/70 hover:text-white hover:border-white/30 hover:bg-white/[0.04]"}`}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold border transition-all duration-150 ${popularPage === 1 ? "border-white/5 text-white/20 cursor-not-allowed" : "border-white/10 text-white/70 hover:text-white hover:border-white/30 hover:bg-white/[0.04]"}`}
                 >
                   <ChevronLeft className="w-4 h-4" /> Prev
                 </button>
-                <span className="flex items-center px-3 text-sm text-white/50 font-medium">
-                  Page {popularPage} of {popularData.totalPages}
-                </span>
+                <span className="text-sm text-white/50 font-medium px-2">Page {popularPage}</span>
                 <button
                   disabled={!popularData.hasMore}
                   onClick={() => { setPopularPage((p) => p + 1); window.scrollTo(0, 0); }}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold border transition-all ${!popularData.hasMore ? "border-white/5 text-white/20 cursor-not-allowed" : "border-primary/40 text-primary hover:bg-primary/10 hover:border-primary/60"}`}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold border transition-all duration-150 ${!popularData.hasMore ? "border-white/5 text-white/20 cursor-not-allowed" : "border-primary/40 text-primary hover:bg-primary/10 hover:border-primary/60"}`}
                 >
                   Next <ChevronRight className="w-4 h-4" />
                 </button>
@@ -337,7 +348,7 @@ export default function MangaHomePage() {
                 <Input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search manga titles..."
+                  placeholder="Search WeebCentral..."
                   className="pl-9 bg-[#1a1a2e] border-white/10 text-white placeholder:text-white/30 focus:border-primary/50"
                 />
               </div>
@@ -363,7 +374,7 @@ export default function MangaHomePage() {
             {!searchQuery && (
               <div className="text-center py-12 text-white/30">
                 <Search className="w-10 h-10 mx-auto mb-3 opacity-20" />
-                <p className="text-sm">Search across thousands of manga</p>
+                <p className="text-sm">Search WeebCentral manga, manhwa &amp; manhua</p>
               </div>
             )}
           </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Link, useParams, useLocation } from "wouter";
 import { ArrowLeft, BookOpen, ChevronDown, ChevronUp, User, Zap, Send, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,31 +8,30 @@ import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-// MangaDex covers load directly from CDN (browser CORS is fine)
-function mdxImage(url: string): string {
-  return url ?? "";
+function proxyImg(url: string): string {
+  if (!url) return "";
+  return `${BASE}/api/weebcentral/proxy-image?url=${encodeURIComponent(url)}`;
 }
 
-interface MDXChapter {
+interface WCChapter {
   id: string;
-  chapter: string | null;
-  title: string | null;
-  volume: string | null;
-  publishAt: string;
-  pages: number;
+  number: number;
+  title: string;
+  releaseDate: string | null;
 }
 
-interface MDXSeries {
+interface WCSeries {
   id: string;
   title: string;
   description: string;
   coverUrl: string;
-  author: string;
   status: string;
-  year: number | null;
+  type: string;
   genres: string[];
-  lastChapter: string | null;
-  chapters: MDXChapter[];
+  authors: string[];
+  latestChapter: string | null;
+  chapters: WCChapter[];
+  totalChapters: number;
 }
 
 interface Comment {
@@ -52,27 +51,27 @@ function timeAgo(iso: string): string {
     if (m < 60) return `${m}m ago`;
     const h = Math.floor(m / 60);
     if (h < 24) return `${h}h ago`;
-    const d = Math.floor(h / 24);
-    return `${d}d ago`;
+    return `${Math.floor(h / 24)}d ago`;
   } catch { return ""; }
 }
 
-function formatDate(iso: string): string {
+function formatDate(iso: string | null): string {
   if (!iso) return "";
-  return new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+  try { return new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }); }
+  catch { return iso; }
 }
 
 const STATUS_COLOR: Record<string, string> = {
   ongoing: "text-green-400 bg-green-500/10",
   completed: "text-blue-400 bg-blue-500/10",
   hiatus: "text-orange-400 bg-orange-500/10",
-  cancelled: "text-red-400 bg-red-500/10",
+  dropped: "text-red-400 bg-red-500/10",
 };
 
 export default function MangaSeriesDetailPage() {
-  const { titleId } = useParams<{ titleId: string }>();
+  const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
-  const [series, setSeries] = useState<MDXSeries | null>(null);
+  const [series, setSeries] = useState<WCSeries | null>(null);
   const [loading, setLoading] = useState(true);
   const [descExpanded, setDescExpanded] = useState(false);
   const [showAllChapters, setShowAllChapters] = useState(false);
@@ -86,24 +85,24 @@ export default function MangaSeriesDetailPage() {
   const { data: user } = useGetMe({ query: { queryKey: getGetMeQueryKey(), retry: false, throwOnError: false } });
 
   useEffect(() => {
-    if (!titleId) return;
+    if (!id) return;
     setLoading(true);
-    fetch(`${BASE}/api/mangadex/series/${titleId}`)
+    fetch(`${BASE}/api/weebcentral/series/${id}`)
       .then((r) => r.ok ? r.json() : Promise.reject(r))
-      .then((d: MDXSeries) => setSeries(d))
+      .then((d: WCSeries) => setSeries(d))
       .catch(() => toast({ description: "Failed to load series", variant: "destructive" }))
       .finally(() => setLoading(false));
-  }, [titleId]);
+  }, [id]);
 
   useEffect(() => {
-    if (!titleId) return;
+    if (!id) return;
     setLoadingComments(true);
-    fetch(`${BASE}/api/comments/mangadex/${titleId}/_series_?limit=10&sortBy=newest`)
+    fetch(`${BASE}/api/comments/weebcentral/${id}/_series_?limit=10&sortBy=newest`)
       .then((r) => r.ok ? r.json() : null)
       .then((d) => { if (d) { setComments(d.comments ?? []); setCommentTotal(d.total ?? 0); } })
       .catch(() => {})
       .finally(() => setLoadingComments(false));
-  }, [titleId]);
+  }, [id]);
 
   async function handlePostComment(e: React.FormEvent) {
     e.preventDefault();
@@ -114,7 +113,7 @@ export default function MangaSeriesDetailPage() {
       const r = await fetch(`${BASE}/api/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: "mangadex", seriesId: titleId, chapterId: "_series_", content: text }),
+        body: JSON.stringify({ provider: "weebcentral", seriesId: id, chapterId: "_series_", content: text }),
       });
       if (r.ok) {
         const nc = await r.json();
@@ -125,11 +124,11 @@ export default function MangaSeriesDetailPage() {
     } catch { } finally { setPostingComment(false); }
   }
 
-  async function handleDeleteComment(id: number) {
+  async function handleDeleteComment(cid: number) {
     try {
-      const r = await fetch(`${BASE}/api/comments/${id}`, { method: "DELETE" });
+      const r = await fetch(`${BASE}/api/comments/${cid}`, { method: "DELETE" });
       if (r.ok) {
-        setComments((prev) => prev.filter((c) => c.id !== id));
+        setComments((prev) => prev.filter((c) => c.id !== cid));
         setCommentTotal((t) => Math.max(0, t - 1));
       }
     } catch { }
@@ -156,14 +155,16 @@ export default function MangaSeriesDetailPage() {
   }
 
   const displayedChapters = showAllChapters ? series.chapters : series.chapters.slice(0, 20);
-  const statusCls = STATUS_COLOR[series.status?.toLowerCase()] ?? "text-gray-400 bg-gray-500/10";
+  const statusKey = (series.status ?? "").toLowerCase().replace(/[^a-z]/g, "");
+  const statusCls = STATUS_COLOR[statusKey] ?? "text-gray-400 bg-gray-500/10";
+  const lastChapter = series.chapters[0];
   const firstChapter = series.chapters[series.chapters.length - 1];
-  const latestChapter = series.chapters[0];
+  const authorLine = series.authors?.join(", ") ?? "";
 
   return (
     <div className="bg-[#07070d] min-h-screen">
       <div className="px-4 pt-4 pb-2">
-        <button onClick={() => navigate("/manga")} className="flex items-center gap-1.5 text-sm text-white/40 hover:text-white transition-colors">
+        <button onClick={() => navigate("/manga")} className="flex items-center gap-1.5 text-sm text-white/40 hover:text-white transition-colors duration-150">
           <ArrowLeft className="w-4 h-4" /> Manga
         </button>
       </div>
@@ -172,28 +173,30 @@ export default function MangaSeriesDetailPage() {
         <div className="flex gap-4">
           <div className="w-28 shrink-0 rounded-xl overflow-hidden shadow-2xl ring-2 ring-white/[0.06]" style={{ aspectRatio: "2/3" }}>
             {series.coverUrl ? (
-              <img src={mdxImage(series.coverUrl)} alt={series.title} className="w-full h-full object-cover" />
+              <img src={proxyImg(series.coverUrl)} alt={series.title} className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full bg-[#1a1a2e] flex items-center justify-center">
+              <div className="w-full h-full bg-gradient-to-br from-[#0d2e22] to-[#1a1a2e] flex items-center justify-center">
                 <BookOpen className="w-8 h-8 text-primary/30" />
               </div>
             )}
           </div>
           <div className="flex-1 min-w-0 pt-1">
             <h1 className="text-lg font-black text-white leading-tight mb-1">{series.title}</h1>
-            {series.author && (
+            {authorLine && (
               <p className="text-xs text-white/40 flex items-center gap-1 mb-2">
-                <User className="w-3 h-3" />{series.author}
+                <User className="w-3 h-3" />{authorLine}
               </p>
             )}
             <div className="flex flex-wrap gap-1.5 mb-2">
               <span className={`text-[11px] px-2 py-0.5 rounded border font-medium capitalize ${statusCls}`}>{series.status}</span>
-              {series.year && <span className="text-[11px] px-2 py-0.5 rounded bg-white/[0.06] text-white/40 border border-white/[0.08]">{series.year}</span>}
+              {series.type && series.type !== "Manga" && (
+                <span className="text-[11px] px-2 py-0.5 rounded bg-primary/10 text-primary/80 border border-primary/20">{series.type}</span>
+              )}
               <span className="text-[11px] px-2 py-0.5 rounded bg-white/[0.06] text-white/40 border border-white/[0.08]">
-                {series.chapters.length} Ch.
+                {series.totalChapters} Ch.
               </span>
             </div>
-            {series.genres.length > 0 && (
+            {series.genres && series.genres.length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {series.genres.slice(0, 4).map((g) => (
                   <span key={g} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary/80">{g}</span>
@@ -206,14 +209,14 @@ export default function MangaSeriesDetailPage() {
         <div className="flex gap-2 mt-4">
           {firstChapter && (
             <Link href={`/manga/read/${series.id}/${firstChapter.id}`} className="flex-1">
-              <Button className="w-full h-10 text-sm font-bold bg-primary hover:bg-primary/90 gap-2">
+              <Button className="w-full h-10 text-sm font-bold bg-primary hover:bg-primary/90 gap-2 transition-all duration-150">
                 <BookOpen className="w-4 h-4" /> First Ch.
               </Button>
             </Link>
           )}
-          {latestChapter && latestChapter.id !== firstChapter?.id && (
-            <Link href={`/manga/read/${series.id}/${latestChapter.id}`} className="flex-1">
-              <Button variant="outline" className="w-full h-10 text-sm font-bold border-white/10 text-white/70 bg-transparent gap-2">
+          {lastChapter && lastChapter.id !== firstChapter?.id && (
+            <Link href={`/manga/read/${series.id}/${lastChapter.id}`} className="flex-1">
+              <Button variant="outline" className="w-full h-10 text-sm font-bold border-white/10 text-white/70 bg-transparent gap-2 transition-all duration-150">
                 <Zap className="w-4 h-4" /> Latest
               </Button>
             </Link>
@@ -226,7 +229,7 @@ export default function MangaSeriesDetailPage() {
               {series.description}
             </p>
             {series.description.length > 200 && (
-              <button onClick={() => setDescExpanded(!descExpanded)} className="mt-1.5 text-xs text-primary flex items-center gap-1 font-semibold">
+              <button onClick={() => setDescExpanded(!descExpanded)} className="mt-1.5 text-xs text-primary flex items-center gap-1 font-semibold hover:text-primary/80 transition-colors duration-150">
                 {descExpanded ? <><ChevronUp className="w-3 h-3" />Show less</> : <><ChevronDown className="w-3 h-3" />Show more</>}
               </button>
             )}
@@ -235,23 +238,22 @@ export default function MangaSeriesDetailPage() {
       </div>
 
       <div className="px-4 border-t border-white/[0.06] pt-5 pb-8">
-        <h2 className="text-base font-extrabold text-white mb-3">{series.chapters.length} Chapters</h2>
+        <h2 className="text-base font-extrabold text-white mb-3">{series.totalChapters} Chapters</h2>
         <div className="space-y-px">
           {displayedChapters.map((ch) => (
             <Link
               key={ch.id}
               href={`/manga/read/${series.id}/${ch.id}`}
-              className="group flex items-center justify-between py-3 px-3 -mx-1 rounded-lg hover:bg-white/[0.04] transition-colors"
+              className="group flex items-center justify-between py-3 px-3 -mx-1 rounded-lg hover:bg-white/[0.04] transition-colors duration-150"
             >
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-white/80 group-hover:text-primary transition-colors">
-                  {ch.chapter ? `Chapter ${ch.chapter}` : "Oneshot"}
-                  {ch.title ? ` — ${ch.title}` : ""}
+                <p className="text-sm font-bold text-white/80 group-hover:text-primary transition-colors duration-150">
+                  {ch.number ? `Chapter ${ch.number}` : "Oneshot"}
+                  {ch.title && ch.title !== `Chapter ${ch.number}` ? ` — ${ch.title}` : ""}
                 </p>
-                {ch.volume && <p className="text-[10px] text-white/30">Vol. {ch.volume}</p>}
               </div>
-              {ch.publishAt && (
-                <span className="text-xs text-white/30 shrink-0 ml-3">{formatDate(ch.publishAt)}</span>
+              {ch.releaseDate && (
+                <span className="text-xs text-white/30 shrink-0 ml-3">{formatDate(ch.releaseDate)}</span>
               )}
             </Link>
           ))}
@@ -260,7 +262,7 @@ export default function MangaSeriesDetailPage() {
         {series.chapters.length > 20 && (
           <button
             onClick={() => setShowAllChapters(!showAllChapters)}
-            className="mt-4 w-full py-2.5 rounded-lg border border-white/10 text-sm text-white/50 hover:text-white hover:border-white/20 hover:bg-white/[0.03] transition-all flex items-center justify-center gap-2"
+            className="mt-4 w-full py-2.5 rounded-lg border border-white/10 text-sm text-white/50 hover:text-white hover:border-white/20 hover:bg-white/[0.03] transition-all duration-150 flex items-center justify-center gap-2"
           >
             {showAllChapters
               ? <><ChevronUp className="w-4 h-4" /> Show fewer</>
@@ -338,7 +340,7 @@ export default function MangaSeriesDetailPage() {
                     {user && (user as any).id === c.userId && (
                       <button
                         onClick={() => handleDeleteComment(c.id)}
-                        className="ml-auto opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/10 text-red-400/60 hover:text-red-400 transition-all"
+                        className="ml-auto opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/10 text-red-400/60 hover:text-red-400 transition-all duration-150"
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>

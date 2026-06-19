@@ -26,7 +26,7 @@ async function asuraFetch(path: string): Promise<string> {
   const url = path.startsWith("http") ? path : `${ASURA_DOMAIN}${path}`;
   const res = await fetch(url, {
     headers: ASURA_HEADERS,
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(12000),
   });
   if (!res.ok) throw new Error(`AsuraScans ${path} returned ${res.status}`);
   return res.text();
@@ -419,7 +419,7 @@ async function fetchHomeData(): Promise<{ featured: AsuraPreview[]; popular: Asu
 // GET /api/asurascans/home
 router.get("/asurascans/home", async (_req, res): Promise<void> => {
   try {
-    const data = await withAsuraCache("asura:home", 5 * 60 * 1000, fetchHomeData);
+    const data = await withAsuraCache("asura:home", 15 * 60 * 1000, fetchHomeData);
     res.json(data);
   } catch (err) {
     console.error("[AsuraScans] home error:", err);
@@ -433,7 +433,7 @@ router.get("/asurascans/series/:slug", async (req, res): Promise<void> => {
   if (!slug) { res.status(400).json({ error: "slug required" }); return; }
 
   try {
-    const data = await withAsuraCache(`asura:series:${slug}`, 10 * 60 * 1000, async (): Promise<AsuraSeries> => {
+    const data = await withAsuraCache(`asura:series:${slug}`, 30 * 60 * 1000, async (): Promise<AsuraSeries> => {
       const html = await asuraFetch(`/comics/${slug}/`);
       const series = parseSeriesPage(html, slug);
       if (!series || !series.title) throw new Error(`Could not parse series data for ${slug}`);
@@ -455,7 +455,7 @@ router.get("/asurascans/chapters/:slug/:chapterNum", async (req, res): Promise<v
   const cacheKey = `asura:chapter:${slug}:${chapterNum}`;
 
   try {
-    const result = await withAsuraCache(cacheKey, 2 * 60 * 60 * 1000, async () => {
+    const result = await withAsuraCache(cacheKey, 6 * 60 * 60 * 1000, async () => {
       const html = await asuraFetch(`/comics/${slug}/chapter/${chapterNum}`);
       const { pages, chapterList, prevChapterId, nextChapterId, seriesName, chapterNumber } =
         extractChapterImages(html, slug);
@@ -486,7 +486,7 @@ router.get("/asurascans/search", async (req, res): Promise<void> => {
   if (!q) { res.json({ results: [] }); return; }
 
   try {
-    const results = await withAsuraCache(`asura:search:${q.toLowerCase()}`, 2 * 60 * 1000, async (): Promise<AsuraPreview[]> => {
+    const results = await withAsuraCache(`asura:search:${q.toLowerCase()}`, 5 * 60 * 1000, async (): Promise<AsuraPreview[]> => {
       // asurascans uses /browse with a search parameter
       const searchPaths = [
         `/browse?search=${encodeURIComponent(q)}`,
@@ -608,7 +608,7 @@ router.get("/asurascans/browse", async (req, res): Promise<void> => {
   const cacheKey = `asura:browse:${genre}:${status}:${page}`;
 
   try {
-    const data = await withAsuraCache(cacheKey, 5 * 60 * 1000, async () => {
+    const data = await withAsuraCache(cacheKey, 10 * 60 * 1000, async () => {
       const params = new URLSearchParams();
       if (genre) params.set("genres", genre);
       if (status) params.set("status", status);
@@ -632,11 +632,11 @@ router.get("/asurascans/latest", async (req, res): Promise<void> => {
   const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
   try {
     if (page === 1) {
-      const homeData = await withAsuraCache("asura:home", 5 * 60 * 1000, fetchHomeData);
+      const homeData = await withAsuraCache("asura:home", 15 * 60 * 1000, fetchHomeData);
       res.json({ items: homeData.latest, hasMore: true, page: 1 });
     } else {
       const cacheKey = `asura:browse:latest:${page}`;
-      const data = await withAsuraCache(cacheKey, 5 * 60 * 1000, async () => {
+      const data = await withAsuraCache(cacheKey, 10 * 60 * 1000, async () => {
         const params = new URLSearchParams();
         if (page > 1) params.set("page", String(page));
         const html = await asuraFetch(`/browse?${params.toString()}`);
@@ -656,11 +656,11 @@ router.get("/asurascans/popular", async (req, res): Promise<void> => {
   const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
   try {
     if (page === 1) {
-      const homeData = await withAsuraCache("asura:home", 5 * 60 * 1000, fetchHomeData);
+      const homeData = await withAsuraCache("asura:home", 15 * 60 * 1000, fetchHomeData);
       res.json({ items: homeData.popular, hasMore: false, page: 1 });
     } else {
       const cacheKey = `asura:browse:popular:${page}`;
-      const data = await withAsuraCache(cacheKey, 5 * 60 * 1000, async () => {
+      const data = await withAsuraCache(cacheKey, 10 * 60 * 1000, async () => {
         const params = new URLSearchParams();
         if (page > 1) params.set("page", String(page));
         const html = await asuraFetch(`/browse?${params.toString()}`);
@@ -673,6 +673,11 @@ router.get("/asurascans/popular", async (req, res): Promise<void> => {
     console.error("[AsuraScans] popular error:", err);
     res.status(502).json({ error: "Failed to fetch popular", items: [], hasMore: false });
   }
+});
+
+// Background pre-warm: populate home cache on startup so first visitor is fast
+setImmediate(() => {
+  withAsuraCache("asura:home", 15 * 60 * 1000, fetchHomeData).catch(() => {});
 });
 
 export default router;

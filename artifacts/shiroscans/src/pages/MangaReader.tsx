@@ -7,39 +7,33 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-// Chapter pages proxy through backend (at-home server URLs vary)
-function mdxImage(url: string): string {
+function proxyImg(url: string): string {
   if (!url) return "";
   if (!url.startsWith("http")) return url;
-  return `${BASE}/api/mangadex/proxy-image?url=${encodeURIComponent(url)}`;
+  return `${BASE}/api/weebcentral/proxy-image?url=${encodeURIComponent(url)}`;
 }
 
-interface MDXPage {
-  url: string;
-  filename: string;
-}
-
-interface MDXChapter {
+interface WCChapter {
   id: string;
-  chapter: string | null;
-  title: string | null;
-  volume: string | null;
-  publishAt: string;
+  number: number;
+  title: string;
+  releaseDate: string | null;
 }
 
-interface MDXSeries {
+interface WCSeries {
   id: string;
   title: string;
-  chapters: MDXChapter[];
+  chapters: WCChapter[];
 }
 
 export default function MangaReaderPage() {
-  const { titleId, chapterId } = useParams<{ titleId: string; chapterId: string }>();
+  const { id, chapterId } = useParams<{ id: string; chapterId: string }>();
   const [, navigate] = useLocation();
 
-  const [pages, setPages] = useState<MDXPage[]>([]);
+  const [pages, setPages] = useState<string[]>([]);
+  const [embedUrl, setEmbedUrl] = useState<string>("");
   const [loading, setLoading] = useState(true);
-  const [seriesData, setSeriesData] = useState<MDXSeries | null>(null);
+  const [seriesData, setSeriesData] = useState<WCSeries | null>(null);
   const [showUI, setShowUI] = useState(true);
   const [loadedImages, setLoadedImages] = useState<Set<number>>(new Set());
   const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -49,20 +43,25 @@ export default function MangaReaderPage() {
     if (!chapterId) return;
     setLoading(true);
     setLoadedImages(new Set());
-    fetch(`${BASE}/api/mangadex/chapters/${chapterId}`)
+    setEmbedUrl("");
+    setPages([]);
+    fetch(`${BASE}/api/weebcentral/read/${chapterId}`)
       .then((r) => r.ok ? r.json() : Promise.reject(r))
-      .then((d: { pages: MDXPage[] }) => setPages(d.pages ?? []))
+      .then((d: { pages: string[]; embedUrl: string }) => {
+        setPages(d.pages ?? []);
+        setEmbedUrl(d.embedUrl ?? "");
+      })
       .catch(() => toast({ description: "Failed to load chapter", variant: "destructive" }))
       .finally(() => setLoading(false));
   }, [chapterId]);
 
   useEffect(() => {
-    if (!titleId) return;
-    fetch(`${BASE}/api/mangadex/series/${titleId}`)
+    if (!id) return;
+    fetch(`${BASE}/api/weebcentral/series/${id}`)
       .then((r) => r.ok ? r.json() : Promise.reject(r))
-      .then((d: MDXSeries) => setSeriesData(d))
+      .then((d: WCSeries) => setSeriesData(d))
       .catch(() => {});
-  }, [titleId]);
+  }, [id]);
 
   useEffect(() => {
     const handleClick = () => {
@@ -86,17 +85,19 @@ export default function MangaReaderPage() {
   const currentChapter = allChapters[currentIdx];
   const seriesName = seriesData?.title ?? "";
 
-  const chapterLabel = (ch: MDXChapter) =>
-    ch.chapter ? `Chapter ${ch.chapter}${ch.title ? ` — ${ch.title}` : ""}` : "Oneshot";
+  const chapterLabel = (ch: WCChapter) =>
+    ch.number ? `Chapter ${ch.number}${ch.title && ch.title !== `Chapter ${ch.number}` ? ` — ${ch.title}` : ""}` : "Oneshot";
 
-  const barCls = `transition-all duration-300 ${showUI ? "opacity-100" : "opacity-0 pointer-events-none"}`;
+  const barCls = `transition-all duration-200 ${showUI ? "opacity-100" : "opacity-0 pointer-events-none"}`;
+
+  const useEmbed = !loading && pages.length === 0 && embedUrl;
 
   return (
     <div className="bg-[#07070d] min-h-[100dvh] relative">
       <div className={`fixed top-0 left-0 right-0 z-50 bg-[#0A0A0F]/97 backdrop-blur-md border-b border-white/[0.06] flex items-center h-12 px-3 gap-2 ${barCls}`}>
         <Link
-          href={`/manga/series/${titleId}`}
-          className="p-1.5 rounded-md hover:bg-white/8 text-white/50 hover:text-white transition-colors shrink-0"
+          href={`/manga/series/${id}`}
+          className="p-1.5 rounded-md hover:bg-white/8 text-white/50 hover:text-white transition-colors duration-150 shrink-0"
           onClick={(e) => e.stopPropagation()}
         >
           <ArrowLeft className="w-5 h-5" />
@@ -117,11 +118,20 @@ export default function MangaReaderPage() {
               <Skeleton key={i} className="w-full bg-[#111118]" style={{ height: "70vh" }} />
             ))}
           </div>
+        ) : useEmbed ? (
+          <div className="w-full" style={{ height: "calc(100dvh - 8rem)" }} onClick={(e) => e.stopPropagation()}>
+            <iframe
+              src={embedUrl}
+              className="w-full h-full border-0"
+              title="Chapter Reader"
+              sandbox="allow-scripts allow-same-origin allow-popups"
+            />
+          </div>
         ) : pages.length === 0 ? (
           <div className="text-center py-24 px-4">
             <p className="text-white/40 mb-4">No pages found for this chapter.</p>
             <Link
-              href={`/manga/series/${titleId}`}
+              href={`/manga/series/${id}`}
               className="text-primary text-sm inline-block"
               onClick={(e) => e.stopPropagation()}
             >
@@ -130,16 +140,17 @@ export default function MangaReaderPage() {
           </div>
         ) : (
           <div className="max-w-3xl mx-auto space-y-0.5">
-            {pages.map((page, i) => (
+            {pages.map((url, i) => (
               <div key={i} className="w-full relative">
                 {!loadedImages.has(i) && (
                   <Skeleton className="w-full bg-[#111118] absolute inset-0" style={{ minHeight: "50vh" }} />
                 )}
                 <img
-                  src={mdxImage(page.url)}
+                  src={proxyImg(url)}
                   alt={`Page ${i + 1}`}
                   className="w-full h-auto block"
-                  loading="lazy"
+                  loading={i < 3 ? "eager" : "lazy"}
+                  decoding="async"
                   onLoad={() => markLoaded(i)}
                   onError={(e) => { markLoaded(i); (e.target as HTMLImageElement).style.display = "none"; }}
                 />
@@ -158,8 +169,8 @@ export default function MangaReaderPage() {
           <div className="flex-1">
             {prevChapter ? (
               <Link
-                href={`/manga/read/${titleId}/${prevChapter.id}`}
-                className="flex items-center justify-center gap-1 w-full py-2 rounded-lg bg-primary/10 border border-primary/30 text-primary text-sm font-bold hover:bg-primary hover:text-white transition-all"
+                href={`/manga/read/${id}/${prevChapter.id}`}
+                className="flex items-center justify-center gap-1 w-full py-2 rounded-lg bg-primary/10 border border-primary/30 text-primary text-sm font-bold hover:bg-primary hover:text-white transition-all duration-150"
               >
                 <ChevronLeft className="w-4 h-4" /> Prev
               </Link>
@@ -174,19 +185,19 @@ export default function MangaReaderPage() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white/60 text-sm font-medium hover:bg-white/10 transition-all"
+                  className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white/60 text-sm font-medium hover:bg-white/10 transition-all duration-150"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <List className="w-3.5 h-3.5 shrink-0" />
                   <span className="truncate text-sm">
-                    {currentChapter ? `Ch. ${currentChapter.chapter ?? "?"}` : "Chapter"}
+                    {currentChapter ? `Ch. ${currentChapter.number ?? "?"}` : "Chapter"}
                   </span>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="center" className="w-64 max-h-64 overflow-y-auto bg-card border-white/10" onClick={(e) => e.stopPropagation()}>
                 {allChapters.map((ch) => (
                   <DropdownMenuItem key={ch.id} asChild>
-                    <Link href={`/manga/read/${titleId}/${ch.id}`} className="w-full cursor-pointer">
+                    <Link href={`/manga/read/${id}/${ch.id}`} className="w-full cursor-pointer">
                       {chapterLabel(ch)}
                     </Link>
                   </DropdownMenuItem>
@@ -198,8 +209,8 @@ export default function MangaReaderPage() {
           <div className="flex-1">
             {nextChapter ? (
               <Link
-                href={`/manga/read/${titleId}/${nextChapter.id}`}
-                className="flex items-center justify-center gap-1 w-full py-2 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-all shadow-md shadow-primary/20"
+                href={`/manga/read/${id}/${nextChapter.id}`}
+                className="flex items-center justify-center gap-1 w-full py-2 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-all duration-150 shadow-md shadow-primary/20"
               >
                 Next <ChevronRight className="w-4 h-4" />
               </Link>

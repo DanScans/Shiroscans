@@ -21,6 +21,9 @@ import ManhwaHomePage from "@/pages/ManhwaHome";
 import ManhwaSeriesDetailPage from "@/pages/ManhwaSeriesDetail";
 import ManhwaReaderPage from "@/pages/ManhwaReader";
 import ManhwaBrowsePage from "@/pages/ManhwaBrowse";
+import MangaHomePage from "@/pages/MangaHome";
+import MangaSeriesDetailPage from "@/pages/MangaSeriesDetail";
+import MangaReaderPage from "@/pages/MangaReader";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -43,6 +46,8 @@ function LayoutedRoutes() {
         <Route path="/series/:provider/:id" component={MangaFireSeriesDetailPage} />
         <Route path="/browse" component={BrowsePage} />
         <Route path="/search" component={SearchPage} />
+        <Route path="/manga" component={MangaHomePage} />
+        <Route path="/manga/series/:id" component={MangaSeriesDetailPage} />
         <Route path="/manhwa" component={ManhwaHomePage} />
         <Route path="/manhwa/browse" component={ManhwaBrowsePage} />
         <Route path="/manhwa/series/:slug" component={ManhwaSeriesDetailPage} />
@@ -66,6 +71,7 @@ function App() {
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Switch>
             <Route path="/read/:provider/:seriesId/:chapterId" component={MangaFireReaderPage} />
+            <Route path="/manga/read/:id/:chapterId" component={MangaReaderPage} />
             <Route path="/manhwa/read/:slug/:chapterNum" component={ManhwaReaderPage} />
             <Route component={LayoutedRoutes} />
           </Switch>
