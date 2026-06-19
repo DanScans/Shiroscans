@@ -127,9 +127,31 @@ export default function BrowsePage() {
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [openSections, setOpenSections] = useState({ sort: true, status: false, genre: false });
+  const [filterResults, setFilterResults] = useState<WCSeries[] | null>(null);
+  const [filterLoading, setFilterLoading] = useState(false);
 
   function toggleSection(s: keyof typeof openSections) { setOpenSections((prev) => ({ ...prev, [s]: !prev[s] })); }
   function toggleGenre(g: string) { setSelectedGenres((prev) => prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]); }
+
+  async function applyFilters() {
+    setFiltersOpen(false);
+    const hasFilters = selectedStatus !== "All" || selectedGenres.length > 0;
+    if (!hasFilters) { setFilterResults(null); return; }
+    setFilterLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedStatus !== "All") params.set("status", selectedStatus);
+      if (selectedGenres.length > 0) params.set("genres", selectedGenres.join(","));
+      const res = await fetch(`${BASE}/api/weebcentral/filter?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed");
+      const data = await res.json();
+      setFilterResults(data.items ?? []);
+    } catch {
+      setFilterResults([]);
+    } finally {
+      setFilterLoading(false);
+    }
+  }
 
   const loadHome = useCallback(async () => {
     setLoading(true);
@@ -163,21 +185,11 @@ export default function BrowsePage() {
   function clearSearch() { setSearchInput(""); setQuery(""); setSearchResults([]); }
 
   const baseItems = sort === "popular" ? allItems.popular : allItems.latest;
+  const hasAppliedFilters = filterResults !== null;
 
-  let displayedItems = query ? searchResults : baseItems;
+  let displayedItems = query ? searchResults : (hasAppliedFilters ? filterResults! : baseItems);
 
-  if (!query && selectedStatus !== "All") {
-    displayedItems = displayedItems.filter((item) =>
-      item.status?.toLowerCase() === selectedStatus.toLowerCase()
-    );
-  }
-  if (!query && selectedGenres.length > 0) {
-    displayedItems = displayedItems.filter((item) =>
-      selectedGenres.some((g) => item.genres?.some((ig) => ig.toLowerCase() === g.toLowerCase()))
-    );
-  }
-
-  const isLoading = query ? searchLoading : loading;
+  const isLoading = query ? searchLoading : (filterLoading || loading);
   const activeFilterCount = [selectedStatus !== "All" ? 1 : 0, selectedGenres.length > 0 ? 1 : 0].reduce((a, b) => a + b, 0);
 
   return (
@@ -186,7 +198,7 @@ export default function BrowsePage() {
         <div className="flex items-center gap-2 mb-5">
           <form onSubmit={handleSearch} className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-            <input type="text" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search WeebCentral..."
+            <input type="text" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search ShiroScans..."
               className="w-full bg-[#13131f] border border-white/[0.08] rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-white/25 focus:outline-none focus:border-primary/40" />
             {searchInput && (
               <button type="button" onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white"><X className="w-4 h-4" /></button>
@@ -231,7 +243,7 @@ export default function BrowsePage() {
                 ))}
               </div>
             </FilterSection>
-            <button onClick={() => setFiltersOpen(false)}
+            <button onClick={applyFilters}
               className="mt-3 w-full py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-all">
               Apply Filters
             </button>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useParams, useLocation } from "wouter";
-import { ArrowLeft, ChevronLeft, ChevronRight, List } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, List, Maximize2, Minimize2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -36,8 +36,24 @@ export default function MangaReaderPage() {
   const [seriesData, setSeriesData] = useState<WCSeries | null>(null);
   const [showUI, setShowUI] = useState(true);
   const [loadedImages, setLoadedImages] = useState<Set<number>>(new Set());
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const containerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
 
   useEffect(() => {
     if (!chapterId) return;
@@ -93,7 +109,7 @@ export default function MangaReaderPage() {
   const useEmbed = !loading && pages.length === 0 && embedUrl;
 
   return (
-    <div className="bg-[#07070d] min-h-[100dvh] relative">
+    <div ref={containerRef} className="bg-[#07070d] min-h-[100dvh] relative">
       <div className={`fixed top-0 left-0 right-0 z-50 bg-[#0A0A0F]/97 backdrop-blur-md border-b border-white/[0.06] flex items-center h-12 px-3 gap-2 ${barCls}`}>
         <Link
           href={`/manga/series/${id}`}
@@ -108,7 +124,13 @@ export default function MangaReaderPage() {
             {currentChapter ? chapterLabel(currentChapter) : `Chapter ${chapterId}`}
           </p>
         </div>
-        <div className="w-8 shrink-0" />
+        <button
+          onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
+          className="p-1.5 rounded-md hover:bg-white/8 text-white/50 hover:text-white transition-colors duration-150 shrink-0"
+          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+        >
+          {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+        </button>
       </div>
 
       <div className="pt-12 pb-20" onClick={() => { setShowUI((v) => !v); clearTimeout(hideTimer.current); }}>
@@ -119,12 +141,14 @@ export default function MangaReaderPage() {
             ))}
           </div>
         ) : useEmbed ? (
-          <div className="w-full" style={{ height: "calc(100dvh - 8rem)" }} onClick={(e) => e.stopPropagation()}>
+          <div className="w-full overflow-hidden" style={{ height: "calc(100dvh - 8rem)" }} onClick={(e) => e.stopPropagation()}>
             <iframe
               src={embedUrl}
-              className="w-full h-full border-0"
+              className="w-full border-0"
+              style={{ height: "calc(100% + 120px)", marginTop: "-120px" }}
               title="Chapter Reader"
               sandbox="allow-scripts allow-same-origin allow-popups"
+              allowFullScreen
             />
           </div>
         ) : pages.length === 0 ? (

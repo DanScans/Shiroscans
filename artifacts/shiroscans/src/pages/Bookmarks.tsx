@@ -58,7 +58,11 @@ export default function BookmarksPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {bookmarks.map((b) => (
             <div key={b.id} className="group relative rounded-lg overflow-hidden bg-card border border-white/[0.06] hover:border-primary/30 transition-all duration-200" data-testid={`card-bookmark-${b.id}`}>
-              <Link href={`/series/${b.provider}/${encodeURIComponent(b.seriesId)}`} className="block">
+              <Link href={
+                b.provider === "weebcentral" ? `/manga/series/${b.seriesId}` :
+                b.provider === "asurascans" ? `/manhwa/series/${encodeURIComponent(b.seriesId)}` :
+                `/series/${b.provider}/${encodeURIComponent(b.seriesId)}`
+              } className="block">
                 <div className="aspect-[2/3] relative overflow-hidden bg-secondary">
                   {b.coverImage ? (
                     <img src={b.coverImage} alt={b.title} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" loading="lazy" />
