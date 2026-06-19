@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useParams, useLocation } from "wouter";
-import { ArrowLeft, Bookmark, BookOpen, ChevronDown, ChevronUp, Star, Send, Loader2, Trash2, SortAsc, SortDesc, Search } from "lucide-react";
+import { ArrowLeft, Bookmark, BookOpen, ChevronDown, ChevronUp, Star, Send, Loader2, Trash2, SortAsc, SortDesc, Search, Download, Square, CheckSquare } from "lucide-react";
+import jsPDF from "jspdf";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -94,6 +95,10 @@ export default function ManhwaSeriesDetailPage() {
   const [descExpanded, setDescExpanded] = useState(false);
   const [sortNewest, setSortNewest] = useState(true);
   const [chapterSearch, setChapterSearch] = useState("");
+  const [downloadMode, setDownloadMode] = useState(false);
+  const [selectedChapIds, setSelectedChapIds] = useState<Set<string>>(new Set());
+  const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<{ current: number; total: number } | null>(null);
   const [reactions, setReactions] = useState<ReactionData | null>(null);
   const [reacting, setReacting] = useState(false);
   const [rating, setRating] = useState<RatingData | null>(null);
@@ -183,6 +188,75 @@ export default function ManhwaSeriesDetailPage() {
       const r = await fetch(`${BASE}/api/comments/${id}`, { method: "DELETE" });
       if (r.ok) { setComments((prev) => prev.filter((c) => c.id !== id)); setCommentTotal((t) => Math.max(0, t - 1)); }
     } catch { }
+  }
+
+  function toggleSelectAll() {
+    if (selectedChapIds.size === filteredChapters.length) setSelectedChapIds(new Set());
+    else setSelectedChapIds(new Set(filteredChapters.map((c) => c.id)));
+  }
+
+  async function downloadSelected() {
+    const chapters = filteredChapters.filter((c) => selectedChapIds.has(c.id));
+    if (!window.confirm(`Download ${chapters.length} chapter${chapters.length !== 1 ? "s" : ""} as PDF?`)) return;
+    setDownloading(true);
+    let totalDownloaded = 0;
+    try {
+      for (let ci = 0; ci < chapters.length; ci++) {
+        const ch = chapters[ci];
+        setDownloadProgress({ current: ci, total: chapters.length });
+        try {
+          const res = await fetch(`${BASE}/api/asurascans/chapters/${encodeURIComponent(safeSlug)}/${ch.number}`);
+          const data = await res.json();
+          const pages: string[] = data.pages ?? [];
+          if (pages.length === 0) {
+            toast({ description: `Chapter ${ch.number}: no images found.`, variant: "destructive" });
+            continue;
+          }
+          let pdf: jsPDF | null = null;
+          for (let pi = 0; pi < pages.length; pi++) {
+            try {
+              const proxyUrl = `${BASE}/api/proxy-image?url=${encodeURIComponent(pages[pi])}`;
+              const imgRes = await fetch(proxyUrl);
+              const blob = await imgRes.blob();
+              const objUrl = URL.createObjectURL(blob);
+              await new Promise<void>((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                  const w = img.naturalWidth;
+                  const h = img.naturalHeight;
+                  const canvas = document.createElement("canvas");
+                  canvas.width = w; canvas.height = h;
+                  canvas.getContext("2d")!.drawImage(img, 0, 0);
+                  const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+                  if (!pdf) {
+                    pdf = new jsPDF({ orientation: h >= w ? "portrait" : "landscape", unit: "px", format: [w, h], compress: true });
+                  } else {
+                    pdf.addPage([w, h], h >= w ? "portrait" : "landscape");
+                  }
+                  pdf.addImage(dataUrl, "JPEG", 0, 0, w, h);
+                  URL.revokeObjectURL(objUrl);
+                  resolve();
+                };
+                img.onerror = () => { URL.revokeObjectURL(objUrl); resolve(); };
+                img.src = objUrl;
+              });
+            } catch {}
+          }
+          if (pdf) {
+            const safeTitle = (series?.title ?? "Chapter").replace(/[/\\?%*:|"<>]/g, "-");
+            (pdf as jsPDF).save(`${safeTitle}_Ch${String(ch.number).padStart(3, "0")}.pdf`);
+            totalDownloaded++;
+          }
+          await new Promise((r) => setTimeout(r, 300));
+        } catch {}
+      }
+    } finally {
+      setDownloading(false);
+      setDownloadProgress(null);
+      setDownloadMode(false);
+      setSelectedChapIds(new Set());
+      if (totalDownloaded > 0) toast({ description: `Downloaded ${totalDownloaded} chapter${totalDownloaded !== 1 ? "s" : ""} as PDF!` });
+    }
   }
 
   if (seriesLoading) {
@@ -298,11 +372,26 @@ export default function ManhwaSeriesDetailPage() {
         <div className="mt-6 border-t border-white/[0.06] pt-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-extrabold text-white">{Number(series.totalChapters) > 0 ? `${series.totalChapters} Chapters` : "Chapters"}</h2>
-            <button onClick={() => setSortNewest(!sortNewest)}
-              className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white px-2.5 py-1 rounded-lg border border-white/[0.08] hover:border-white/20 transition-all">
-              {sortNewest ? <SortDesc className="w-3 h-3" /> : <SortAsc className="w-3 h-3" />}
-              {sortNewest ? "Newest" : "Oldest"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => { setDownloadMode(!downloadMode); setSelectedChapIds(new Set()); }}
+                className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border transition-all ${downloadMode ? "text-primary border-primary/40 bg-primary/10" : "text-white/40 hover:text-white border-white/[0.08] hover:border-white/20"}`}>
+                <Download className="w-3 h-3" />{downloadMode ? "Cancel" : "Download"}
+              </button>
+              {!downloadMode && (
+                <button onClick={() => setSortNewest(!sortNewest)}
+                  className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white px-2.5 py-1 rounded-lg border border-white/[0.08] hover:border-white/20 transition-all">
+                  {sortNewest ? <SortDesc className="w-3 h-3" /> : <SortAsc className="w-3 h-3" />}
+                  {sortNewest ? "Newest" : "Oldest"}
+                </button>
+              )}
+              {downloadMode && (
+                <button onClick={toggleSelectAll}
+                  className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white px-2.5 py-1 rounded-lg border border-white/[0.08] hover:border-white/20 transition-all">
+                  {selectedChapIds.size === filteredChapters.length ? <CheckSquare className="w-3 h-3" /> : <Square className="w-3 h-3" />}
+                  {selectedChapIds.size === filteredChapters.length ? "Deselect All" : "Select All"}
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="relative mb-3">
@@ -318,22 +407,51 @@ export default function ManhwaSeriesDetailPage() {
             ) : (
               <div className="space-y-px">
                 {filteredChapters.map((ch) => (
-                  <Link key={ch.id} href={`/manhwa/read/${encodeURIComponent(safeSlug)}/${ch.number}`}
-                    className="group flex items-center justify-between py-3 px-4 hover:bg-white/[0.04] transition-colors border-b border-white/[0.04] last:border-0">
-                    <p className="text-sm font-bold text-white/80 group-hover:text-primary transition-colors">
-                      Chapter {ch.number}{ch.title ? ` - ${ch.title}` : ""}
-                    </p>
-                    {ch.releaseDate && (
-                      <span className="text-xs text-white/30 shrink-0 ml-3">
-                        {new Date(ch.releaseDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                      </span>
-                    )}
-                  </Link>
+                  downloadMode ? (
+                    <button key={ch.id} onClick={() => setSelectedChapIds((prev) => { const s = new Set(prev); s.has(ch.id) ? s.delete(ch.id) : s.add(ch.id); return s; })}
+                      className={`w-full flex items-center gap-3 py-3 px-4 transition-colors border-b border-white/[0.04] last:border-0 text-left ${selectedChapIds.has(ch.id) ? "bg-primary/10" : "hover:bg-white/[0.04]"}`}>
+                      {selectedChapIds.has(ch.id) ? <CheckSquare className="w-4 h-4 text-primary shrink-0" /> : <Square className="w-4 h-4 text-white/25 shrink-0" />}
+                      <p className="text-sm font-bold text-white/80 flex-1">
+                        Chapter {ch.number}{ch.title ? ` - ${ch.title}` : ""}
+                      </p>
+                      {ch.releaseDate && (
+                        <span className="text-xs text-white/30 shrink-0">
+                          {new Date(ch.releaseDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </span>
+                      )}
+                    </button>
+                  ) : (
+                    <Link key={ch.id} href={`/manhwa/read/${encodeURIComponent(safeSlug)}/${ch.number}`}
+                      className="group flex items-center justify-between py-3 px-4 hover:bg-white/[0.04] transition-colors border-b border-white/[0.04] last:border-0">
+                      <p className="text-sm font-bold text-white/80 group-hover:text-primary transition-colors">
+                        Chapter {ch.number}{ch.title ? ` - ${ch.title}` : ""}
+                      </p>
+                      {ch.releaseDate && (
+                        <span className="text-xs text-white/30 shrink-0 ml-3">
+                          {new Date(ch.releaseDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </span>
+                      )}
+                    </Link>
+                  )
                 ))}
               </div>
             )}
           </div>
         </div>
+
+        {downloadMode && selectedChapIds.size > 0 && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 w-full max-w-sm">
+            <button onClick={downloadSelected} disabled={downloading}
+              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-primary font-bold text-sm text-white shadow-2xl shadow-primary/30 disabled:opacity-60 transition-all">
+              <Download className="w-4 h-4" />
+              {downloading ? (
+                <>{downloadProgress ? `Downloading ${downloadProgress.current + 1}/${downloadProgress.total}...` : "Downloading..."}</>
+              ) : (
+                <>Download {selectedChapIds.size} Chapter{selectedChapIds.size !== 1 ? "s" : ""} as PDF</>
+              )}
+            </button>
+          </div>
+        )}
 
         <div className="mt-6 border-t border-white/[0.06] pt-5 pb-4">
           <p className="text-sm font-extrabold text-white mb-4">Reactions</p>

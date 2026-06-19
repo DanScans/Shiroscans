@@ -181,6 +181,10 @@ export default function MangaSeriesDetailPage() {
           const res = await fetch(`${BASE}/api/weebcentral/read/${ch.id}`);
           const data = await res.json();
           const pages: string[] = data.pages ?? [];
+          if (pages.length === 0) {
+            toast({ description: `Chapter ${ch.number}: images are browser-protected and can't be downloaded.`, variant: "destructive" });
+            continue;
+          }
           let pdf: jsPDF | null = null;
           for (let pi = 0; pi < pages.length; pi++) {
             try {
