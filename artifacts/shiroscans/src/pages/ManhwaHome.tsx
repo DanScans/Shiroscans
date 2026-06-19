@@ -12,15 +12,11 @@ function proxyImg(url: string): string {
 
 interface ManhwaItem {
   id: string;
-  slug: string;
   title: string;
   coverUrl: string;
-  type: string;
-  status: string | null;
-  rating: number | null;
-  latestChapter: string | null;
-  genres: string[];
-  chapters?: Array<{ id: string; number: number; title: string; releaseDate: string | null }>;
+  status?: string | null;
+  latestChapter?: number;
+  genres?: string[];
 }
 
 function HeroCarousel({ items }: { items: ManhwaItem[] }) {
@@ -61,7 +57,7 @@ function HeroCarousel({ items }: { items: ManhwaItem[] }) {
               className="absolute top-0 bottom-0 flex items-center transition-all duration-500 ease-out cursor-pointer"
               style={{ left: "50%", transform: `translateX(calc(-50% + ${offset * 58}vw)) scale(${scale})`, zIndex, opacity, width: "min(52vw, 210px)", filter: offset === 0 ? "none" : "brightness(0.35)" }}
               onClick={() => { if (offset !== 0) setIdx(i); }}>
-              <Link href={offset === 0 ? `/manhwa/series/${encodeURIComponent(item.slug)}` : "#"}
+              <Link href={offset === 0 ? `/manhwa/series/${encodeURIComponent(item.id)}` : "#"}
                 onClick={(e) => { if (offset !== 0) e.preventDefault(); }} className="block w-full">
                 <div className="relative rounded-2xl overflow-hidden shadow-2xl" style={{ aspectRatio: "2/3" }}>
                   {item.coverUrl ? (
@@ -76,7 +72,7 @@ function HeroCarousel({ items }: { items: ManhwaItem[] }) {
         })}
       </div>
       <div className="text-center pt-2 pb-1 px-6">
-        <Link href={`/manhwa/series/${encodeURIComponent(active.slug)}`}>
+        <Link href={`/manhwa/series/${encodeURIComponent(active.id)}`}>
           <h2 className="text-white font-black text-base leading-tight line-clamp-1 hover:text-primary transition-colors">{active.title}</h2>
         </Link>
       </div>
@@ -96,7 +92,7 @@ function HeroCarousel({ items }: { items: ManhwaItem[] }) {
 
 function TrendingCard({ item }: { item: ManhwaItem }) {
   return (
-    <Link href={`/manhwa/series/${encodeURIComponent(item.slug)}`} className="group block">
+    <Link href={`/manhwa/series/${encodeURIComponent(item.id)}`} className="group block">
       <div className="relative rounded-xl overflow-hidden bg-[#13131f] shadow-lg" style={{ aspectRatio: "2/3" }}>
         {item.coverUrl ? (
           <img src={proxyImg(item.coverUrl)} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
@@ -107,17 +103,15 @@ function TrendingCard({ item }: { item: ManhwaItem }) {
       </div>
       <div className="mt-2 px-0.5">
         <h3 className="text-xs font-bold text-white/90 group-hover:text-primary transition-colors line-clamp-2 leading-snug">{item.title}</h3>
-        {item.latestChapter && <p className="text-[10px] text-white/45 mt-0.5">{item.latestChapter}</p>}
+        {item.status && <p className="text-[10px] text-white/45 mt-0.5">{item.status}</p>}
       </div>
     </Link>
   );
 }
 
 function LatestRow({ item }: { item: ManhwaItem }) {
-  const latestCh = item.chapters?.[0];
-  const prevCh = item.chapters?.[1];
   return (
-    <Link href={`/manhwa/series/${encodeURIComponent(item.slug)}`} className="group flex gap-3 py-3 border-b border-white/[0.05] hover:bg-white/[0.02] rounded-lg px-1 -mx-1 transition-colors">
+    <Link href={`/manhwa/series/${encodeURIComponent(item.id)}`} className="group flex gap-3 py-3 border-b border-white/[0.05] hover:bg-white/[0.02] rounded-lg px-1 -mx-1 transition-colors">
       <div className="w-14 shrink-0 rounded-lg overflow-hidden bg-[#13131f]" style={{ aspectRatio: "2/3" }}>
         {item.coverUrl ? (
           <img src={proxyImg(item.coverUrl)} alt={item.title} className="w-full h-full object-cover" loading="lazy" />
@@ -128,17 +122,13 @@ function LatestRow({ item }: { item: ManhwaItem }) {
       <div className="flex-1 min-w-0 pt-0.5">
         <p className="text-sm font-bold text-white/90 group-hover:text-primary transition-colors line-clamp-1">{item.title}</p>
         <div className="mt-1.5 space-y-1">
-          {latestCh && (
+          {item.latestChapter != null && (
             <div className="flex items-center gap-1.5">
-              <span className="text-[11px] bg-primary/15 text-primary/80 px-1.5 py-0.5 rounded font-semibold">Ch.{latestCh.number}</span>
-              {latestCh.releaseDate && <span className="text-[10px] text-white/30">{formatDate(latestCh.releaseDate)}</span>}
+              <span className="text-[11px] bg-primary/15 text-primary/80 px-1.5 py-0.5 rounded font-semibold">Ch.{item.latestChapter}</span>
             </div>
           )}
-          {prevCh && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] bg-white/[0.06] text-white/40 px-1.5 py-0.5 rounded font-medium">Ch.{prevCh.number}</span>
-              {prevCh.releaseDate && <span className="text-[10px] text-white/20">{formatDate(prevCh.releaseDate)}</span>}
-            </div>
+          {(item.genres?.length ?? 0) > 0 && (
+            <p className="text-[10px] text-white/30 line-clamp-1">{item.genres!.slice(0, 3).join(" · ")}</p>
           )}
         </div>
       </div>
@@ -146,23 +136,9 @@ function LatestRow({ item }: { item: ManhwaItem }) {
   );
 }
 
-function formatDate(d: string | null): string {
-  if (!d) return "";
-  try {
-    const diff = Date.now() - new Date(d).getTime();
-    const days = Math.floor(diff / 86400000);
-    if (days < 1) return "today";
-    if (days === 1) return "1d ago";
-    if (days < 7) return `${days}d ago`;
-    if (days < 14) return "1w ago";
-    if (days < 30) return `${Math.floor(days / 7)}w ago`;
-    return `${Math.floor(days / 30)}mo ago`;
-  } catch { return d; }
-}
-
 function PopularRankedRow({ item, rank }: { item: ManhwaItem; rank: number }) {
   return (
-    <Link href={`/manhwa/series/${encodeURIComponent(item.slug)}`} className="group flex gap-3 py-3 border-b border-white/[0.05] hover:bg-white/[0.02] rounded-lg px-1 -mx-1 transition-colors">
+    <Link href={`/manhwa/series/${encodeURIComponent(item.id)}`} className="group flex gap-3 py-3 border-b border-white/[0.05] hover:bg-white/[0.02] rounded-lg px-1 -mx-1 transition-colors">
       <div className="relative w-14 shrink-0 rounded-lg overflow-hidden bg-[#13131f]" style={{ aspectRatio: "2/3" }}>
         <span className="absolute top-0 left-0 z-10 bg-black/80 text-white text-[10px] font-black px-1.5 py-0.5 rounded-br-lg leading-tight">#{rank}</span>
         {item.coverUrl ? (
@@ -173,8 +149,8 @@ function PopularRankedRow({ item, rank }: { item: ManhwaItem; rank: number }) {
       </div>
       <div className="flex-1 min-w-0 pt-1">
         <p className="text-sm font-bold text-white/90 group-hover:text-primary transition-colors line-clamp-1">{item.title}</p>
-        {item.genres.length > 0 && <p className="text-[10px] text-white/35 mt-1 line-clamp-1">{item.genres.slice(0, 3).join(" · ")}</p>}
-        {item.rating !== null && <p className="text-[11px] text-yellow-400 mt-1 font-semibold">⭐ {item.rating.toFixed(1)}</p>}
+        {(item.genres?.length ?? 0) > 0 && <p className="text-[10px] text-white/35 mt-1 line-clamp-1">{item.genres!.slice(0, 3).join(" · ")}</p>}
+        {item.status && <p className="text-[11px] text-white/40 mt-1">{item.status}</p>}
       </div>
     </Link>
   );
@@ -231,7 +207,7 @@ export default function ManhwaHomePage() {
   const [popularLoading, setPopularLoading] = useState(false);
 
   const [latestPage, setLatestPage] = useState(1);
-  const [latestPageData, setLatestPageData] = useState<Record<number, { items: ManhwaItem[]; totalPages: number }>>({});
+  const [latestPageData, setLatestPageData] = useState<Record<number, { items: ManhwaItem[]; hasMore: boolean }>>({});
   const [latestPageLoading, setLatestPageLoading] = useState(false);
 
   useEffect(() => {
@@ -245,7 +221,7 @@ export default function ManhwaHomePage() {
   useEffect(() => {
     if (popularData[popularPeriod]) return;
     setPopularLoading(true);
-    fetch(`${BASE}/api/asurascans/popular?period=${popularPeriod}`)
+    fetch(`${BASE}/api/asurascans/popular?page=1`)
       .then((r) => r.ok ? r.json() : Promise.reject(r))
       .then((d) => setPopularData((prev) => ({ ...prev, [popularPeriod]: d.items ?? [] })))
       .catch(() => {}).finally(() => setPopularLoading(false));
@@ -256,16 +232,15 @@ export default function ManhwaHomePage() {
     setLatestPageLoading(true);
     fetch(`${BASE}/api/asurascans/latest?page=${latestPage}`)
       .then((r) => r.ok ? r.json() : Promise.reject(r))
-      .then((d) => setLatestPageData((prev) => ({ ...prev, [latestPage]: { items: d.items ?? [], totalPages: d.totalPages ?? 5 } })))
+      .then((d) => setLatestPageData((prev) => ({ ...prev, [latestPage]: { items: d.items ?? [], hasMore: d.hasMore ?? false } })))
       .catch(() => {}).finally(() => setLatestPageLoading(false));
   }, [latestPage]);
 
   const featured = homeData?.featured ?? [];
   const latestFromHome = homeData?.latest ?? [];
-  const currentLatest = latestPageData[latestPage]?.items ?? [];
-  const totalLatestPages = latestPageData[latestPage]?.totalPages ?? 5;
+  const currentLatestEntry = latestPageData[latestPage];
+  const currentLatest = currentLatestEntry?.items ?? [];
   const currentPopular = popularData[popularPeriod] ?? (homeData?.popular ?? []);
-  const carouselItems = featured;
 
   return (
     <div className="bg-[#07070d] min-h-screen">
@@ -277,8 +252,8 @@ export default function ManhwaHomePage() {
             <Skeleton className="rounded-2xl bg-[#13131f] opacity-40" style={{ width: "min(42vw, 180px)", aspectRatio: "2/3" }} />
           </div>
         </div>
-      ) : carouselItems.length > 0 ? (
-        <HeroCarousel items={carouselItems} />
+      ) : featured.length > 0 ? (
+        <HeroCarousel items={featured} />
       ) : null}
 
       <div className="max-w-2xl mx-auto px-4">
@@ -287,7 +262,7 @@ export default function ManhwaHomePage() {
           <div className="grid grid-cols-4 gap-2.5">
             {homeLoading
               ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
-              : featured.slice(0, 4).map((item) => <TrendingCard key={item.slug} item={item} />)
+              : featured.slice(0, 4).map((item) => <TrendingCard key={item.id} item={item} />)
             }
           </div>
         </section>
@@ -298,28 +273,27 @@ export default function ManhwaHomePage() {
             {latestPageLoading || (homeLoading && latestPage === 1)
               ? Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
               : (currentLatest.length > 0 ? currentLatest : latestFromHome).map((item, i) => (
-                  <LatestRow key={item.slug || i} item={item} />
+                  <LatestRow key={item.id || i} item={item} />
                 ))
             }
           </div>
-          <Pagination page={latestPage} totalPages={Math.max(totalLatestPages, 5)}
-            onPage={(p) => { setLatestPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+          <div className="flex items-center justify-center gap-3 pt-5 pb-2">
+            <button onClick={() => { setLatestPage((p) => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+              disabled={latestPage <= 1}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-white/40 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-all">‹ Prev</button>
+            <span className="text-xs text-white/40 font-semibold">Page {latestPage}</span>
+            <button onClick={() => { setLatestPage((p) => p + 1); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+              disabled={currentLatestEntry ? !currentLatestEntry.hasMore : false}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-white/40 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-all">Next ›</button>
+          </div>
         </section>
 
         <section className="pt-4 pb-10">
           <h2 className="text-base font-extrabold text-white mb-3">Popular Manhwa</h2>
-          <div className="flex gap-1 mb-4">
-            {(["weekly", "monthly", "alltime"] as const).map((period) => (
-              <button key={period} onClick={() => setPopularPeriod(period)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${popularPeriod === period ? "bg-primary text-white" : "bg-white/[0.05] text-white/40 hover:text-white hover:bg-white/[0.08]"}`}>
-                {period === "weekly" ? "Weekly" : period === "monthly" ? "Monthly" : "All Time"}
-              </button>
-            ))}
-          </div>
           <div>
             {popularLoading
               ? Array.from({ length: 10 }).map((_, i) => <SkeletonRow key={i} />)
-              : currentPopular.slice(0, 10).map((item, i) => <PopularRankedRow key={item.slug || i} item={item} rank={i + 1} />)
+              : currentPopular.slice(0, 10).map((item, i) => <PopularRankedRow key={item.id || i} item={item} rank={i + 1} />)
             }
           </div>
         </section>

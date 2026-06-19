@@ -469,6 +469,7 @@ router.get("/asurascans/chapters/:slug/:chapterNum", async (req, res): Promise<v
         prevChapterId,
         nextChapterId,
         chapterList,
+        embedUrl: `https://asurascans.com/comics/${slug}/chapter/${chapterNum}`,
       };
     });
 

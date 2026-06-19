@@ -20,25 +20,19 @@ function proxyImg(url: string): string {
 
 interface ManhwaItem {
   id: string;
-  slug: string;
   title: string;
   coverUrl: string;
-  type: string;
-  status: string | null;
-  rating: number | null;
-  latestChapter: string | null;
-  genres: string[];
+  status?: string | null;
+  genres?: string[];
 }
 
 const SORT_OPTIONS = [
   { value: "recently_updated", label: "Latest Update" },
   { value: "popular", label: "Popular" },
-  { value: "rating", label: "Rating" },
   { value: "a-z", label: "A-Z" },
   { value: "newest", label: "Newest" },
 ];
 const STATUS_OPTIONS = ["All", "Ongoing", "Completed", "Hiatus", "Dropped"];
-const TYPE_OPTIONS = ["All", "Manhwa", "Manhua", "Manga"];
 const ALL_GENRES = [
   "Action", "Adventure", "Comedy", "Drama", "Fantasy", "Romance",
   "Harem", "Martial Arts", "Isekai", "Regression", "Reincarnation",
@@ -68,21 +62,21 @@ function ManhwaCard({ item }: { item: ManhwaItem }) {
   const queryClient = useQueryClient();
   const { data: user } = useGetMe({ query: { queryKey: getGetMeQueryKey(), retry: false } });
   const { data: bookmarks } = useGetBookmarks({ query: { enabled: !!user, queryKey: getGetBookmarksQueryKey() } });
-  const isBookmarked = bookmarks?.some((b) => b.provider === "asurascans" && b.seriesId === item.slug);
+  const isBookmarked = bookmarks?.some((b: { provider: string; seriesId: string }) => b.provider === "asurascans" && b.seriesId === item.id);
   const addBookmark = useAddBookmark({ mutation: { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetBookmarksQueryKey() }) } });
   const removeBookmark = useRemoveBookmark({ mutation: { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetBookmarksQueryKey() }) } });
 
   function toggleBookmark(e: React.MouseEvent) {
     e.preventDefault(); e.stopPropagation();
     if (!user) { toast({ description: "Login to bookmark", variant: "destructive" }); return; }
-    if (isBookmarked) removeBookmark.mutate({ provider: "asurascans", seriesId: item.slug });
-    else addBookmark.mutate({ data: { provider: "asurascans", seriesId: item.slug, title: item.title, coverImage: item.coverUrl, type: item.type, status: item.status ?? "Ongoing" } });
+    if (isBookmarked) removeBookmark.mutate({ provider: "asurascans", seriesId: item.id });
+    else addBookmark.mutate({ data: { provider: "asurascans", seriesId: item.id, title: item.title, coverImage: item.coverUrl, type: "Manhwa", status: item.status ?? "Ongoing" } });
   }
 
   const statusCls = STATUS_COLOR[item.status ?? ""] ?? "text-white/40 bg-white/[0.05] border-white/[0.08]";
 
   return (
-    <Link href={`/manhwa/series/${encodeURIComponent(item.slug)}`} className="group block">
+    <Link href={`/manhwa/series/${encodeURIComponent(item.id)}`} className="group block">
       <div className="relative rounded-xl overflow-hidden bg-[#13131f]" style={{ aspectRatio: "2/3" }}>
         {item.coverUrl ? (
           <img src={proxyImg(item.coverUrl)} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
@@ -90,9 +84,6 @@ function ManhwaCard({ item }: { item: ManhwaItem }) {
           <div className="w-full h-full bg-gradient-to-br from-[#1a1a2e] to-[#13131f]" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-        {item.rating !== null && (
-          <div className="absolute top-1.5 right-1.5 bg-black/75 text-yellow-400 text-[9px] font-bold px-1.5 py-0.5 rounded">⭐ {item.rating.toFixed(1)}</div>
-        )}
       </div>
       <div className="mt-1.5 px-0.5">
         <p className="text-xs font-bold text-white/90 group-hover:text-primary transition-colors line-clamp-2 leading-snug">{item.title}</p>
@@ -119,18 +110,14 @@ function SkeletonCard() {
   );
 }
 
-function Pagination({ page, totalPages, onPage }: { page: number; totalPages: number; onPage: (p: number) => void }) {
-  const pages: number[] = [];
-  const start = Math.max(1, page - 2);
-  const end = Math.min(totalPages, start + 4);
-  for (let p = start; p <= end; p++) pages.push(p);
+function Pagination({ page, hasMore, onPage }: { page: number; hasMore: boolean; onPage: (p: number) => void }) {
   return (
-    <div className="flex items-center justify-center gap-1 pt-4 pb-2">
-      <button onClick={() => onPage(page - 1)} disabled={page <= 1} className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-white/40 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-all">‹</button>
-      {pages.map((p) => (
-        <button key={p} onClick={() => onPage(p)} className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${p === page ? "bg-primary text-white" : "text-white/40 hover:text-white hover:bg-white/[0.06]"}`}>{p}</button>
-      ))}
-      <button onClick={() => onPage(page + 1)} disabled={page >= totalPages} className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-white/40 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-all">›</button>
+    <div className="flex items-center justify-center gap-3 pt-4 pb-2">
+      <button onClick={() => onPage(page - 1)} disabled={page <= 1}
+        className="px-3 py-1.5 rounded-lg text-xs font-bold text-white/40 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-all">‹ Prev</button>
+      <span className="text-xs text-white/40 font-semibold">Page {page}</span>
+      <button onClick={() => onPage(page + 1)} disabled={!hasMore}
+        className="px-3 py-1.5 rounded-lg text-xs font-bold text-white/40 hover:text-white hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-all">Next ›</button>
     </div>
   );
 }
@@ -139,15 +126,14 @@ export default function ManhwaBrowsePage() {
   const [items, setItems] = useState<ManhwaItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("recently_updated");
-  const [selectedType, setSelectedType] = useState("All");
   const [selectedStatus, setSelectedStatus] = useState("All");
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [openSections, setOpenSections] = useState({ sort: true, type: true, status: false, genre: false });
+  const [openSections, setOpenSections] = useState({ sort: true, status: false, genre: false });
 
   function toggleSection(s: keyof typeof openSections) { setOpenSections((prev) => ({ ...prev, [s]: !prev[s] })); }
   function toggleGenre(g: string) { setSelectedGenres((prev) => prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]); }
@@ -156,30 +142,30 @@ export default function ManhwaBrowsePage() {
     setLoading(true);
     try {
       if (query) {
-        const params = new URLSearchParams({ q: query, page: String(p) });
+        const params = new URLSearchParams({ q: query });
         const r = await fetch(`${BASE}/api/asurascans/search?${params}`);
         if (!r.ok) throw new Error("Failed");
         const d = await r.json();
-        setItems(d.items ?? []);
-        setTotalPages(d.totalPages ?? 1);
+        const results: ManhwaItem[] = d.results ?? [];
+        setItems(results);
+        setHasMore(false);
       } else {
         const params = new URLSearchParams({
-          sort, page: String(p),
-          ...(selectedType !== "All" && { type: selectedType }),
+          page: String(p),
           ...(selectedStatus !== "All" && { status: selectedStatus }),
           ...(selectedGenres.length > 0 && { genre: selectedGenres[0]! }),
         });
         const r = await fetch(`${BASE}/api/asurascans/browse?${params}`);
         if (!r.ok) throw new Error("Failed");
         const d = await r.json();
-        setItems(d.items ?? []);
-        setTotalPages(d.totalPages ?? 1);
+        setItems(d.results ?? []);
+        setHasMore(d.hasMore ?? false);
       }
-    } catch { setItems([]); }
+    } catch { setItems([]); setHasMore(false); }
     finally { setLoading(false); }
-  }, [query, sort, selectedType, selectedStatus, selectedGenres]);
+  }, [query, selectedStatus, selectedGenres]);
 
-  useEffect(() => { setPage(1); fetchData(1); }, [query, sort, selectedType, selectedStatus, selectedGenres]);
+  useEffect(() => { setPage(1); fetchData(1); }, [query, sort, selectedStatus, selectedGenres]);
   useEffect(() => { fetchData(page); }, [page]);
 
   function handleSearch(e: React.FormEvent) {
@@ -188,7 +174,7 @@ export default function ManhwaBrowsePage() {
     setPage(1);
   }
 
-  const activeFilterCount = [selectedType !== "All" ? 1 : 0, selectedStatus !== "All" ? 1 : 0, selectedGenres.length > 0 ? 1 : 0].reduce((a: number, b: number) => a + b, 0);
+  const activeFilterCount = [selectedStatus !== "All" ? 1 : 0, selectedGenres.length > 0 ? 1 : 0].reduce((a: number, b: number) => a + b, 0);
 
   return (
     <div className="bg-[#07070d] min-h-screen">
@@ -217,16 +203,6 @@ export default function ManhwaBrowsePage() {
                   <button key={opt.value} onClick={() => setSort(opt.value)}
                     className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${sort === opt.value ? "bg-primary text-white" : "bg-white/[0.05] text-white/50 hover:text-white hover:bg-white/[0.08]"}`}>
                     {opt.label}
-                  </button>
-                ))}
-              </div>
-            </FilterSection>
-            <FilterSection title="Type" open={openSections.type} onToggle={() => toggleSection("type")}>
-              <div className="flex flex-wrap gap-1.5">
-                {TYPE_OPTIONS.map((t) => (
-                  <button key={t} onClick={() => setSelectedType(t)}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${selectedType === t ? "bg-primary text-white" : "bg-white/[0.05] text-white/50 hover:text-white hover:bg-white/[0.08]"}`}>
-                    {t}
                   </button>
                 ))}
               </div>
@@ -270,12 +246,12 @@ export default function ManhwaBrowsePage() {
             ? Array.from({ length: 12 }).map((_, i) => <SkeletonCard key={i} />)
             : items.length === 0
               ? <div className="col-span-3 sm:col-span-4 text-center py-16 text-white/30 text-sm">No results found</div>
-              : items.map((item) => <ManhwaCard key={item.slug} item={item} />)
+              : items.map((item) => <ManhwaCard key={item.id} item={item} />)
           }
         </div>
 
-        {!loading && totalPages > 1 && (
-          <Pagination page={page} totalPages={totalPages} onPage={(p) => { setPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+        {!loading && !query && (
+          <Pagination page={page} hasMore={hasMore} onPage={(p) => { setPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
         )}
       </div>
     </div>

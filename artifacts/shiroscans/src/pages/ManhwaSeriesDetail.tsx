@@ -42,16 +42,13 @@ interface AsuraChapter {
 
 interface AsuraSeries {
   id: string;
-  slug: string;
   title: string;
   coverUrl: string;
   description: string;
-  type: string;
+  author?: string;
   status: string;
-  rating: number | null;
   genres: string[];
-  altTitles: string[];
-  author: string;
+  altTitles?: string[];
   totalChapters: number;
   chapters: AsuraChapter[];
 }
@@ -132,7 +129,7 @@ export default function ManhwaSeriesDetailPage() {
 
   const { data: user } = useGetMe({ query: { queryKey: getGetMeQueryKey(), retry: false } });
   const { data: bookmarks } = useGetBookmarks({ query: { enabled: !!user, queryKey: getGetBookmarksQueryKey() } });
-  const isBookmarked = bookmarks?.some((b) => b.provider === "asurascans" && b.seriesId === safeSlug);
+  const isBookmarked = bookmarks?.some((b: { provider: string; seriesId: string }) => b.provider === "asurascans" && b.seriesId === safeSlug);
   const addBookmark = useAddBookmark({ mutation: { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getGetBookmarksQueryKey() }); toast({ description: "Bookmarked!" }); } } });
   const removeBookmark = useRemoveBookmark({ mutation: { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getGetBookmarksQueryKey() }); toast({ description: "Removed" }); } } });
 
@@ -140,7 +137,7 @@ export default function ManhwaSeriesDetailPage() {
     if (!user) { toast({ description: "Login to bookmark", variant: "destructive" }); return; }
     if (!series) return;
     if (isBookmarked) removeBookmark.mutate({ provider: "asurascans", seriesId: safeSlug });
-    else addBookmark.mutate({ data: { provider: "asurascans", seriesId: safeSlug, title: series.title, coverImage: series.coverUrl, type: series.type, status: series.status } });
+    else addBookmark.mutate({ data: { provider: "asurascans", seriesId: safeSlug, title: series.title, coverImage: series.coverUrl, type: "Manhwa", status: series.status } });
   }
 
   async function handleReact(reaction: string) {
@@ -255,14 +252,7 @@ export default function ManhwaSeriesDetailPage() {
 
         <div className="flex items-center justify-center gap-6 mt-4">
           <div className="text-center">
-            <p className="text-xl font-black text-yellow-400">
-              {series.rating !== null ? `⭐ ${series.rating.toFixed(1)}` : "—"}
-            </p>
-            <p className="text-[10px] text-white/35 mt-0.5 font-semibold">Rating</p>
-          </div>
-          <div className="w-px h-8 bg-white/[0.08]" />
-          <div className="text-center">
-            <p className="text-xl font-black text-white">{series.totalChapters || "—"}</p>
+            <p className="text-xl font-black text-white">{Number(series.totalChapters) || "—"}</p>
             <p className="text-[10px] text-white/35 mt-0.5 font-semibold">Chapters</p>
           </div>
           <div className="w-px h-8 bg-white/[0.08]" />
@@ -308,7 +298,7 @@ export default function ManhwaSeriesDetailPage() {
 
         <div className="mt-6 border-t border-white/[0.06] pt-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-extrabold text-white">{series.totalChapters > 0 ? `${series.totalChapters} Chapters` : "Chapters"}</h2>
+            <h2 className="text-sm font-extrabold text-white">{Number(series.totalChapters) > 0 ? `${series.totalChapters} Chapters` : "Chapters"}</h2>
             <button onClick={() => setSortNewest(!sortNewest)}
               className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white px-2.5 py-1 rounded-lg border border-white/[0.08] hover:border-white/20 transition-all">
               {sortNewest ? <SortDesc className="w-3 h-3" /> : <SortAsc className="w-3 h-3" />}

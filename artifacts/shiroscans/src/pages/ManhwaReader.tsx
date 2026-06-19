@@ -15,11 +15,12 @@ function proxyImg(url: string): string {
 
 interface ChapterResult {
   pages: string[];
+  embedUrl?: string;
+  seriesTitle?: string;
   chapterList?: Array<{ id: string; number: number; title: string }>;
-  prevChapterId?: number | null;
-  nextChapterId?: number | null;
-  seriesName?: string;
-  chapterNumber?: number;
+  prevChapterId?: string | null;
+  nextChapterId?: string | null;
+  currentChapter?: string;
 }
 
 export default function ManhwaReaderPage() {
@@ -65,12 +66,15 @@ export default function ManhwaReaderPage() {
   const currentNum = parseFloat(safeChapterNum);
   const prevNum = chapterData?.prevChapterId ?? null;
   const nextNum = chapterData?.nextChapterId ?? null;
+  const hasPages = (chapterData?.pages?.length ?? 0) > 0;
+  const embedUrl = chapterData?.embedUrl;
 
-  function chapterHref(num: number): string {
+  function chapterHref(num: string | number): string {
     return `/manhwa/read/${encodeURIComponent(safeSlug)}/${num}`;
   }
 
-  const seriesTitle = chapterData?.seriesName ?? safeSlug.replace(/-[0-9a-f]{6,}$/, "").replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+  const seriesTitle = chapterData?.seriesTitle
+    ?? safeSlug.replace(/-[0-9a-f]{6,}$/, "").replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 
   return (
     <div className="bg-[#07070d] min-h-[100dvh] relative">
@@ -93,7 +97,7 @@ export default function ManhwaReaderPage() {
               <Skeleton key={i} className="w-full bg-[#111118]" style={{ height: "70vh" }} />
             ))}
           </div>
-        ) : (chapterData?.pages?.length ?? 0) > 0 ? (
+        ) : hasPages ? (
           <div className="max-w-3xl mx-auto space-y-0.5">
             {chapterData!.pages.map((url, i) => (
               <div key={i} className="w-full relative">
@@ -103,6 +107,16 @@ export default function ManhwaReaderPage() {
                   onError={(e) => { markLoaded(i); (e.target as HTMLImageElement).style.display = "none"; }} />
               </div>
             ))}
+          </div>
+        ) : embedUrl ? (
+          <div className="w-full" style={{ height: "calc(100dvh - 112px)" }}
+            onClick={(e) => e.stopPropagation()}>
+            <iframe
+              src={embedUrl}
+              className="w-full h-full border-0"
+              sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+              title={`Chapter ${currentNum}`}
+            />
           </div>
         ) : (
           <div className="text-center py-24 px-4">
