@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useParams, useLocation } from "wouter";
 import { ArrowLeft, Bookmark, BookOpen, ChevronDown, ChevronUp, Star, Send, Loader2, Trash2, SortAsc, SortDesc, Search, Download, Square, CheckSquare } from "lucide-react";
-import { zipSync } from "fflate";
+import jsPDF from "jspdf";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -170,7 +170,7 @@ export default function MangaSeriesDetailPage() {
 
   async function downloadSelected() {
     const chapters = filteredChapters.filter((c) => selectedChapIds.has(c.id));
-    if (!window.confirm(`Download ${chapters.length} chapter${chapters.length !== 1 ? "s" : ""} as CBZ? Each chapter saves as a single file you can open with any manga reader app.`)) return;
+    if (!window.confirm(`Download ${chapters.length} chapter${chapters.length !== 1 ? "s" : ""} as PDF?`)) return;
     setDownloading(true);
     let totalDownloaded = 0;
     try {
@@ -181,28 +181,40 @@ export default function MangaSeriesDetailPage() {
           const res = await fetch(`${BASE}/api/weebcentral/read/${ch.id}`);
           const data = await res.json();
           const pages: string[] = data.pages ?? [];
-          const files: Record<string, Uint8Array> = {};
+          let pdf: jsPDF | null = null;
           for (let pi = 0; pi < pages.length; pi++) {
             try {
               const proxyUrl = `${BASE}/api/proxy-image?url=${encodeURIComponent(pages[pi])}`;
               const imgRes = await fetch(proxyUrl);
-              const buf = await imgRes.arrayBuffer();
-              const ext = (pages[pi].split(".").pop()?.split("?")[0] ?? "jpg").replace(/[^a-zA-Z0-9]/g, "").substring(0, 4) || "jpg";
-              files[`${String(pi + 1).padStart(4, "0")}.${ext}`] = new Uint8Array(buf);
+              const blob = await imgRes.blob();
+              const objUrl = URL.createObjectURL(blob);
+              await new Promise<void>((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                  const w = img.naturalWidth;
+                  const h = img.naturalHeight;
+                  const canvas = document.createElement("canvas");
+                  canvas.width = w;
+                  canvas.height = h;
+                  canvas.getContext("2d")!.drawImage(img, 0, 0);
+                  const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+                  if (!pdf) {
+                    pdf = new jsPDF({ orientation: h >= w ? "portrait" : "landscape", unit: "px", format: [w, h], compress: true });
+                  } else {
+                    pdf.addPage([w, h], h >= w ? "portrait" : "landscape");
+                  }
+                  pdf.addImage(dataUrl, "JPEG", 0, 0, w, h);
+                  URL.revokeObjectURL(objUrl);
+                  resolve();
+                };
+                img.onerror = () => { URL.revokeObjectURL(objUrl); resolve(); };
+                img.src = objUrl;
+              });
             } catch {}
           }
-          if (Object.keys(files).length > 0) {
-            const zipped = zipSync(files, { level: 0 });
-            const blob = new Blob([zipped], { type: "application/octet-stream" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
+          if (pdf) {
             const safeTitle = (series?.title ?? "Chapter").replace(/[/\\?%*:|"<>]/g, "-");
-            a.download = `${safeTitle}_Ch${String(ch.number).padStart(3, "0")}.cbz`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            (pdf as jsPDF).save(`${safeTitle}_Ch${String(ch.number).padStart(3, "0")}.pdf`);
             totalDownloaded++;
           }
           await new Promise((r) => setTimeout(r, 300));
@@ -213,7 +225,7 @@ export default function MangaSeriesDetailPage() {
       setDownloadProgress(null);
       setDownloadMode(false);
       setSelectedChapIds(new Set());
-      if (totalDownloaded > 0) toast({ description: `Downloaded ${totalDownloaded} chapter${totalDownloaded !== 1 ? "s" : ""} as CBZ!` });
+      if (totalDownloaded > 0) toast({ description: `Downloaded ${totalDownloaded} chapter${totalDownloaded !== 1 ? "s" : ""} as PDF!` });
     }
   }
 
