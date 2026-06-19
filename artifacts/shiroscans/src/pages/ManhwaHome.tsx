@@ -202,8 +202,7 @@ export default function ManhwaHomePage() {
   const [homeData, setHomeData] = useState<{ featured: ManhwaItem[]; popular: ManhwaItem[]; latest: ManhwaItem[] } | null>(null);
   const [homeLoading, setHomeLoading] = useState(true);
 
-  const [popularPeriod, setPopularPeriod] = useState<"weekly" | "monthly" | "alltime">("weekly");
-  const [popularData, setPopularData] = useState<Record<string, ManhwaItem[]>>({});
+  const [popularItems, setPopularItems] = useState<ManhwaItem[]>([]);
   const [popularLoading, setPopularLoading] = useState(false);
 
   const [latestPage, setLatestPage] = useState(1);
@@ -219,13 +218,12 @@ export default function ManhwaHomePage() {
   }, []);
 
   useEffect(() => {
-    if (popularData[popularPeriod]) return;
     setPopularLoading(true);
     fetch(`${BASE}/api/asurascans/popular?page=1`)
       .then((r) => r.ok ? r.json() : Promise.reject(r))
-      .then((d) => setPopularData((prev) => ({ ...prev, [popularPeriod]: d.items ?? [] })))
+      .then((d) => setPopularItems(d.items ?? []))
       .catch(() => {}).finally(() => setPopularLoading(false));
-  }, [popularPeriod]);
+  }, []);
 
   useEffect(() => {
     if (latestPageData[latestPage]) return;
@@ -240,7 +238,7 @@ export default function ManhwaHomePage() {
   const latestFromHome = homeData?.latest ?? [];
   const currentLatestEntry = latestPageData[latestPage];
   const currentLatest = currentLatestEntry?.items ?? [];
-  const currentPopular = popularData[popularPeriod] ?? (homeData?.popular ?? []);
+  const currentPopular = popularItems.length > 0 ? popularItems : (homeData?.popular ?? []);
 
   return (
     <div className="bg-[#07070d] min-h-screen">

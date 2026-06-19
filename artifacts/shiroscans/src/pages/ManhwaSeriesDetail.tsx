@@ -58,12 +58,11 @@ interface RatingData { average: number | null; total: number; userRating: number
 interface Comment { id: number; content: string; createdAt: string; userId: number; username: string; avatarUrl: string | null; }
 
 const REACTIONS = [
-  { key: "upvote", emoji: "👍", label: "Upvote" },
-  { key: "funny", emoji: "😂", label: "Funny" },
   { key: "love", emoji: "❤️", label: "Love" },
-  { key: "surprised", emoji: "😯", label: "Surprised" },
-  { key: "angry", emoji: "😠", label: "Angry" },
+  { key: "fire", emoji: "🔥", label: "Fire" },
+  { key: "wow", emoji: "😮", label: "Wow" },
   { key: "sad", emoji: "😢", label: "Sad" },
+  { key: "angry", emoji: "😠", label: "Angry" },
 ];
 
 function StarRatingWidget({ value, total, userRating, onRate }: { value: number | null; total: number; userRating: number | null; onRate: (v: number) => void; }) {
@@ -338,7 +337,7 @@ export default function ManhwaSeriesDetailPage() {
 
         <div className="mt-6 border-t border-white/[0.06] pt-5 pb-4">
           <p className="text-sm font-extrabold text-white mb-4">Reactions</p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-5 gap-2">
             {REACTIONS.map(({ key, emoji, label }) => {
               const count = ((reactions as unknown) as Record<string, unknown>)?.[key] as number ?? 0;
               const isActive = reactions?.userReaction === key;

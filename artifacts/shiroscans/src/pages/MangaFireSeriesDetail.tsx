@@ -94,12 +94,11 @@ interface Comment {
 }
 
 const REACTIONS: { key: string; emoji: string; label: string }[] = [
-  { key: "upvote", emoji: "👍", label: "Upvote" },
-  { key: "funny", emoji: "😂", label: "Funny" },
   { key: "love", emoji: "❤️", label: "Love" },
-  { key: "surprised", emoji: "😯", label: "Surprised" },
-  { key: "angry", emoji: "😠", label: "Angry" },
+  { key: "fire", emoji: "🔥", label: "Fire" },
+  { key: "wow", emoji: "😮", label: "Wow" },
   { key: "sad", emoji: "😢", label: "Sad" },
+  { key: "angry", emoji: "😠", label: "Angry" },
 ];
 
 function StarRatingWidget({ value, total, userRating, onRate }: {
@@ -411,7 +410,7 @@ export default function MangaFireSeriesDetailPage() {
               {Object.entries(reactions).filter(([k]) => k !== "userReaction").reduce((a, [, b]) => typeof b === "number" ? a + b : a, 0)} reactions
             </p>
           )}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-5 gap-2">
             {REACTIONS.map(({ key, emoji, label }) => {
               const count = ((reactions as unknown) as Record<string, unknown>)?.[key] as number ?? 0;
               const isActive = reactions?.userReaction === key;

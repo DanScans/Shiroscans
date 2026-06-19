@@ -154,6 +154,7 @@ export default function ManhwaBrowsePage() {
           page: String(p),
           ...(selectedStatus !== "All" && { status: selectedStatus }),
           ...(selectedGenres.length > 0 && { genre: selectedGenres[0]! }),
+          ...(sort !== "recently_updated" && { order: sort }),
         });
         const r = await fetch(`${BASE}/api/asurascans/browse?${params}`);
         if (!r.ok) throw new Error("Failed");

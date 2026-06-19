@@ -97,10 +97,23 @@ export default function SearchPage() {
   const runSearch = useCallback((q: string) => {
     if (!q.trim()) { setResults([]); return; }
     setSearching(true);
-    Promise.all([
-      fetch(`${BASE}/api/manga/search?q=${encodeURIComponent(q)}&provider=mangadex`).then((r) => r.ok ? r.json() : { items: [] }),
-      fetch(`${BASE}/api/asurascans/search?q=${encodeURIComponent(q)}`).then((r) => r.ok ? r.json() : { results: [] }),
-    ]).then(([mangaData, asuraData]) => {
+
+    function fetchWithTimeout(url: string, ms: number): Promise<Response> {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), ms);
+      return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+    }
+
+    Promise.allSettled([
+      fetchWithTimeout(`${BASE}/api/manga/search?q=${encodeURIComponent(q)}&provider=mangadex`, 8000)
+        .then((r) => r.ok ? r.json() : { items: [] })
+        .catch(() => ({ items: [] })),
+      fetchWithTimeout(`${BASE}/api/asurascans/search?q=${encodeURIComponent(q)}`, 8000)
+        .then((r) => r.ok ? r.json() : { results: [] })
+        .catch(() => ({ results: [] })),
+    ]).then(([mangaResult, asuraResult]) => {
+      const mangaData = mangaResult.status === "fulfilled" ? mangaResult.value : { items: [] };
+      const asuraData = asuraResult.status === "fulfilled" ? asuraResult.value : { results: [] };
       const manga = (mangaData.items ?? []) as SearchItem[];
       const asura = (asuraData.results ?? []).map((item: any) => ({
         id: item.id,
@@ -118,7 +131,7 @@ export default function SearchPage() {
         if (!seen.has(key)) { seen.add(key); merged.push(item); }
       }
       setResults(merged);
-    }).catch(() => setResults([])).finally(() => setSearching(false));
+    }).finally(() => setSearching(false));
   }, []);
 
   useEffect(() => {

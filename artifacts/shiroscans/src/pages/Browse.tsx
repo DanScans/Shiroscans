@@ -146,11 +146,21 @@ export default function BrowsePage() {
         const params = new URLSearchParams({ q: query, page: String(p) });
         if (selectedType !== "All") params.set("type", selectedType);
         if (selectedStatus !== "All") params.set("status", selectedStatus);
-        const r = await fetch(`${BASE}/api/manga/search?${params}`);
-        if (!r.ok) throw new Error("Failed");
-        const d = await r.json();
-        setItems(d.items ?? []);
-        setHasMore(d.hasMore ?? false);
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 8000);
+        try {
+          const r = await fetch(`${BASE}/api/manga/search?${params}`, { signal: ctrl.signal });
+          clearTimeout(timer);
+          if (!r.ok) throw new Error("Failed");
+          const d = await r.json();
+          setItems(d.items ?? []);
+          setHasMore(d.hasMore ?? false);
+        } catch {
+          clearTimeout(timer);
+          setItems([]);
+          setHasMore(false);
+        }
+        return;
       } else {
         const params = new URLSearchParams({ page: String(p) });
         if (selectedType !== "All") params.set("type", selectedType);
@@ -162,8 +172,7 @@ export default function BrowsePage() {
         setItems(d.items ?? []);
         setHasMore(d.hasMore ?? false);
       }
-    } catch { setItems([]); setHasMore(false); }
-    finally { setLoading(false); }
+    } catch { setItems([]); setHasMore(false); } finally { setLoading(false); }
   }, [query, sort, selectedType, selectedStatus]);
 
   useEffect(() => { setPage(1); fetchData(1); }, [query, sort, selectedType, selectedStatus]);
