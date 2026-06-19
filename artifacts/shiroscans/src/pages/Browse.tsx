@@ -135,13 +135,17 @@ export default function BrowsePage() {
 
   async function applyFilters() {
     setFiltersOpen(false);
-    const hasFilters = selectedStatus !== "All" || selectedGenres.length > 0;
-    if (!hasFilters) { setFilterResults(null); return; }
+    const hasGenres = selectedGenres.length > 0;
+    const hasStatus = selectedStatus !== "All";
+    if (!hasGenres && !hasStatus) { setFilterResults(null); return; }
+    if (!hasGenres) {
+      // Status-only: reset to home data (client-side status filter applied in displayedItems)
+      setFilterResults(null);
+      return;
+    }
     setFilterLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (selectedStatus !== "All") params.set("status", selectedStatus);
-      if (selectedGenres.length > 0) params.set("genres", selectedGenres.join(","));
+      const params = new URLSearchParams({ genres: selectedGenres.join(",") });
       const res = await fetch(`${BASE}/api/weebcentral/filter?${params.toString()}`);
       if (!res.ok) throw new Error("Failed");
       const data = await res.json();
@@ -188,6 +192,12 @@ export default function BrowsePage() {
   const hasAppliedFilters = filterResults !== null;
 
   let displayedItems = query ? searchResults : (hasAppliedFilters ? filterResults! : baseItems);
+
+  if (!query && !hasAppliedFilters && selectedStatus !== "All") {
+    displayedItems = displayedItems.filter((item) =>
+      item.status?.toLowerCase() === selectedStatus.toLowerCase()
+    );
+  }
 
   const isLoading = query ? searchLoading : (filterLoading || loading);
   const activeFilterCount = [selectedStatus !== "All" ? 1 : 0, selectedGenres.length > 0 ? 1 : 0].reduce((a, b) => a + b, 0);

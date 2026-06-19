@@ -388,24 +388,27 @@ router.get("/weebcentral/search", async (req, res): Promise<void> => {
 });
 
 // ── GET /weebcentral/filter?status=&genres= ────────────────────────────────────
+// WeebCentral's advanced search/data endpoint is blocked server-side, so we
+// fall back to POST /search/simple using the first genre (or status) as a
+// keyword search.  Results approximate genre filtering.
 router.get("/weebcentral/filter", async (req, res): Promise<void> => {
-  const status = String(req.query.status ?? "").trim();
   const genres = String(req.query.genres ?? "").trim();
-  const page = Math.max(1, Number(req.query.page ?? 1));
-  const cacheKey = `wc:filter:${status}:${genres}:${page}`;
+  const genreList = genres ? genres.split(",").map((g) => g.trim()).filter(Boolean) : [];
+  const searchText = genreList[0] ?? "";
+  if (!searchText) {
+    res.json({ items: [], page: 1, total: 0, hasMore: false });
+    return;
+  }
+  const cacheKey = `wc:filter3:${searchText}`;
   try {
     const items = await withCache(cacheKey, TTL_BROWSE, async () => {
-      const params = new URLSearchParams();
-      params.set("sort", "Best Match");
-      if (status && status !== "All") params.set("status", status);
-      const genreList = genres ? genres.split(",").map((g) => g.trim()).filter(Boolean) : [];
-      for (const g of genreList) params.append("included_tag[]", g);
-      const html = await wcFetch(`/search?${params.toString()}`, { "HX-Current-URL": `${WC_BASE}/search` });
+      const body = new URLSearchParams({ text: searchText }).toString();
+      const html = await wcFetch("/search/simple?location=main", { "HX-Current-URL": `${WC_BASE}/search` }, "POST", body);
       return parseSimpleSearchResults(html);
     });
-    res.json({ items, page, total: items.length, hasMore: false });
+    res.json({ items, page: 1, total: items.length, hasMore: false });
   } catch (err) {
-    res.status(502).json({ error: String(err), items: [], page, total: 0, hasMore: false });
+    res.status(502).json({ error: String(err), items: [], page: 1, total: 0, hasMore: false });
   }
 });
 

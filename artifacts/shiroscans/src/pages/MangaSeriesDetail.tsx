@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useParams, useLocation } from "wouter";
 import { ArrowLeft, Bookmark, BookOpen, ChevronDown, ChevronUp, Star, Send, Loader2, Trash2, SortAsc, SortDesc, Search, Download, Square, CheckSquare } from "lucide-react";
+import { zipSync } from "fflate";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -169,7 +170,7 @@ export default function MangaSeriesDetailPage() {
 
   async function downloadSelected() {
     const chapters = filteredChapters.filter((c) => selectedChapIds.has(c.id));
-    if (!window.confirm(`Download ${chapters.length} chapter${chapters.length !== 1 ? "s" : ""}? Each chapter's pages will save to your Downloads folder.`)) return;
+    if (!window.confirm(`Download ${chapters.length} chapter${chapters.length !== 1 ? "s" : ""} as CBZ? Each chapter saves as a single file you can open with any manga reader app.`)) return;
     setDownloading(true);
     let totalDownloaded = 0;
     try {
@@ -180,24 +181,31 @@ export default function MangaSeriesDetailPage() {
           const res = await fetch(`${BASE}/api/weebcentral/read/${ch.id}`);
           const data = await res.json();
           const pages: string[] = data.pages ?? [];
+          const files: Record<string, Uint8Array> = {};
           for (let pi = 0; pi < pages.length; pi++) {
             try {
               const proxyUrl = `${BASE}/api/proxy-image?url=${encodeURIComponent(pages[pi])}`;
               const imgRes = await fetch(proxyUrl);
-              const blob = await imgRes.blob();
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              const ext = (pages[pi].split(".").pop()?.split("?")[0] ?? "jpg").substring(0, 4);
-              a.download = `${series?.title ?? "Chapter"}_Ch${String(ch.number).padStart(3, "0")}_p${String(pi + 1).padStart(3, "0")}.${ext}`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
-              await new Promise((r) => setTimeout(r, 100));
+              const buf = await imgRes.arrayBuffer();
+              const ext = (pages[pi].split(".").pop()?.split("?")[0] ?? "jpg").replace(/[^a-zA-Z0-9]/g, "").substring(0, 4) || "jpg";
+              files[`${String(pi + 1).padStart(4, "0")}.${ext}`] = new Uint8Array(buf);
             } catch {}
           }
-          totalDownloaded++;
+          if (Object.keys(files).length > 0) {
+            const zipped = zipSync(files, { level: 0 });
+            const blob = new Blob([zipped], { type: "application/octet-stream" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            const safeTitle = (series?.title ?? "Chapter").replace(/[/\\?%*:|"<>]/g, "-");
+            a.download = `${safeTitle}_Ch${String(ch.number).padStart(3, "0")}.cbz`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            totalDownloaded++;
+          }
+          await new Promise((r) => setTimeout(r, 300));
         } catch {}
       }
     } finally {
@@ -205,7 +213,7 @@ export default function MangaSeriesDetailPage() {
       setDownloadProgress(null);
       setDownloadMode(false);
       setSelectedChapIds(new Set());
-      if (totalDownloaded > 0) toast({ description: `Downloaded ${totalDownloaded} chapter${totalDownloaded !== 1 ? "s" : ""}!` });
+      if (totalDownloaded > 0) toast({ description: `Downloaded ${totalDownloaded} chapter${totalDownloaded !== 1 ? "s" : ""} as CBZ!` });
     }
   }
 
