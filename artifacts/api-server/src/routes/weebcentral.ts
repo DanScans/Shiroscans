@@ -73,37 +73,67 @@ interface WCSeries {
   authors?: string[];
 }
 
-// Parse WeebCentral home page HTML — series come from href="/series/ULID/Slug" with preload
+// Parse WeebCentral home page HTML using cheerio
+// Homepage structure: <article data-tip="Title"> elements in pairs (desktop+mobile)
+// Mobile articles have series links + <span>Chapter X</span>
 function parseHomepageSeries(html: string): { featured: WCSeries[]; popular: WCSeries[]; latest: WCSeries[] } {
-  const featured: WCSeries[] = [];
+  const $ = cheerio.load(html);
   const latest: WCSeries[] = [];
-  const seen = new Set<string>();
+  const seenIds = new Set<string>();
 
-  // Two patterns found in homepage:
-  // 1. Regular featured links: href="https://weebcentral.com/series/ULID/..." preload
-  // 2. Latest updates: <a class="aspect-square ..."> href="..." preload>
+  // Mobile article cards have data-tip + series link + chapter span
+  $("article[data-tip]").each((_, el) => {
+    const rawTitle = $(el).attr("data-tip") ?? "";
+    if (!rawTitle) return;
 
-  const seriesRe = /href=["']https:\/\/weebcentral\.com\/series\/([A-Z0-9]+)\/([^"']+?)["']/g;
-  let m: RegExpExecArray | null;
+    const seriesLink = $(el).find("a[href*='/series/']").first();
+    const href = seriesLink.attr("href") ?? "";
+    const idMatch = href.match(/\/series\/([A-Z0-9]+)/i);
+    if (!idMatch) return;
 
-  // Go through all series links and classify them
-  // We'll look at surrounding context to determine which section they belong to
-  const latestMarker = /aspect-square/;
-  const lines = html.split("\n");
+    const id = idMatch[1];
+    if (!id || seenIds.has(id)) return;
+    seenIds.add(id);
 
-  for (const line of lines) {
-    const seriesMatch = /href=["']https:\/\/weebcentral\.com\/series\/([A-Z0-9]+)\/([^"']+?)["']/.exec(line);
-    if (!seriesMatch) continue;
-    const [, id, slug] = seriesMatch;
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
+    // Extract chapter number from the span inside the chapter link
+    const chapterLink = $(el).find("a[href*='/chapters/']");
+    let latestChapter: string | null = null;
+    chapterLink.each((_, ch) => {
+      const spanText = $(ch).find("span").first().text().trim();
+      if (spanText && /(?:chapter|episode|ch)[\s.]*[\d.]+/i.test(spanText)) {
+        latestChapter = spanText;
+        return false; // break
+      }
+    });
 
-    // Get title: try img alt attribute first, then fall back to slug
-    const altMatch = /alt=["']([^"']+cover)["']/.exec(line);
-    const title = altMatch ? altToTitle(altMatch[1]) : slugToTitle(slug);
-    if (!title) continue;
+    // Title from data-tip (cheerio already HTML-decodes it)
+    const title = rawTitle.trim();
+    if (!title || title.length < 2) return;
 
-    const item: WCSeries = {
+    latest.push({
+      id,
+      title,
+      coverUrl: coverFromId(id),
+      type: "Manga",
+      status: "Ongoing",
+      genres: [],
+      latestChapter,
+    });
+  });
+
+  // Also collect any series links not already seen (for featured/popular)
+  const featured: WCSeries[] = [];
+  $("a[href*='weebcentral.com/series/']").each((_, el) => {
+    const href = $(el).attr("href") ?? "";
+    const idMatch = href.match(/\/series\/([A-Z0-9]+)\/([^"'\s]+)/i);
+    if (!idMatch) return;
+    const [, id, slug] = idMatch;
+    if (!id || seenIds.has(id)) return;
+    seenIds.add(id);
+    const alt = $(el).find("img").attr("alt") ?? "";
+    const title = alt ? altToTitle(alt) : slugToTitle(slug!);
+    if (!title || title.length < 2) return;
+    featured.push({
       id,
       title,
       coverUrl: coverFromId(id),
@@ -111,37 +141,15 @@ function parseHomepageSeries(html: string): { featured: WCSeries[]; popular: WCS
       status: "Ongoing",
       genres: [],
       latestChapter: null,
-    };
-
-    if (latestMarker.test(line)) {
-      latest.push(item);
-    } else if (line.includes("preload")) {
-      featured.push(item);
-    }
-  }
-
-  // Also use the regex across the full HTML to catch any missed series
-  seriesRe.lastIndex = 0;
-  while ((m = seriesRe.exec(html)) !== null) {
-    const id = m[1];
-    const slug = m[2];
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    featured.push({
-      id,
-      title: slugToTitle(slug),
-      coverUrl: coverFromId(id),
-      type: "Manga",
-      status: "Ongoing",
-      genres: [],
-      latestChapter: null,
     });
-  }
+  });
+
+  const allSeries = [...latest, ...featured];
 
   return {
-    featured: featured.slice(0, 24),
-    popular: featured.slice(0, 48),
-    latest: latest.length > 0 ? latest : featured.slice(0, 48),
+    featured: allSeries.slice(0, 24),
+    popular: allSeries.slice(0, 48),
+    latest: latest.length > 0 ? latest : allSeries.slice(0, 48),
   };
 }
 

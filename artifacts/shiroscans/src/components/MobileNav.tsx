@@ -1,15 +1,16 @@
 import { Link, useLocation } from "wouter";
 import { Home, Bookmark, Search, User } from "lucide-react";
 
-const NAV_ITEMS = [
-  { href: "/", icon: Home, label: "Home" },
-  { href: "/browse", icon: Search, label: "Browse" },
-  { href: "/bookmarks", icon: Bookmark, label: "Bookmarks" },
-  { href: "/profile", icon: User, label: "Profile" },
-];
-
 export default function MobileNav() {
   const [location] = useLocation();
+  const isManhwa = location.startsWith("/manhwa");
+
+  const navItems = [
+    { href: isManhwa ? "/manhwa" : "/", icon: Home, label: "Home" },
+    { href: isManhwa ? "/manhwa/browse" : "/browse", icon: Search, label: "Browse" },
+    { href: "/bookmarks", icon: Bookmark, label: "Bookmarks" },
+    { href: "/profile", icon: User, label: "Profile" },
+  ];
 
   return (
     <nav
@@ -17,11 +18,11 @@ export default function MobileNav() {
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <div className="flex items-stretch h-14">
-        {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
-          const active = location === href || (href !== "/" && location.startsWith(href));
+        {navItems.map(({ href, icon: Icon, label }) => {
+          const active = location === href || (href !== "/" && href !== "/manhwa" && location.startsWith(href));
           return (
             <Link
-              key={href}
+              key={label}
               href={href}
               className="flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors"
             >

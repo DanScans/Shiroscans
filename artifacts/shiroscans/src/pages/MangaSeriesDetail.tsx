@@ -188,26 +188,31 @@ export default function MangaSeriesDetailPage() {
           let pdf: jsPDF | null = null;
           for (let pi = 0; pi < pages.length; pi++) {
             try {
-              const proxyUrl = `${BASE}/api/proxy-image?url=${encodeURIComponent(pages[pi])}`;
+              const proxyUrl = `${BASE}/api/weebcentral/proxy-image?url=${encodeURIComponent(pages[pi])}`;
               const imgRes = await fetch(proxyUrl);
               const blob = await imgRes.blob();
               const objUrl = URL.createObjectURL(blob);
               await new Promise<void>((resolve) => {
                 const img = new Image();
                 img.onload = () => {
-                  const w = img.naturalWidth;
-                  const h = img.naturalHeight;
+                  const w = img.naturalWidth || 800;
+                  const h = img.naturalHeight || 1200;
                   const canvas = document.createElement("canvas");
                   canvas.width = w;
                   canvas.height = h;
-                  canvas.getContext("2d")!.drawImage(img, 0, 0);
-                  const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+                  const ctx = canvas.getContext("2d")!;
+                  ctx.fillStyle = "#ffffff";
+                  ctx.fillRect(0, 0, w, h);
+                  ctx.drawImage(img, 0, 0, w, h);
+                  const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+                  const wPt = w * 0.75;
+                  const hPt = h * 0.75;
                   if (!pdf) {
-                    pdf = new jsPDF({ orientation: h >= w ? "portrait" : "landscape", unit: "px", format: [w, h], compress: true });
+                    pdf = new jsPDF({ orientation: hPt >= wPt ? "portrait" : "landscape", unit: "pt", format: [wPt, hPt], compress: true });
                   } else {
-                    pdf.addPage([w, h], h >= w ? "portrait" : "landscape");
+                    pdf.addPage([wPt, hPt], hPt >= wPt ? "portrait" : "landscape");
                   }
-                  pdf.addImage(dataUrl, "JPEG", 0, 0, w, h);
+                  pdf.addImage(dataUrl, "JPEG", 0, 0, wPt, hPt);
                   URL.revokeObjectURL(objUrl);
                   resolve();
                 };

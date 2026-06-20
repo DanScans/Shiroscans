@@ -4,4 +4,6 @@
 - [MangaDex image loading](mangadex-images.md) — MangaDex CDN (uploads.mangadex.org) blocks server-side proxy requests (returns 400); load covers directly in browser; only proxy chapter at-home-server pages through backend
 - [MangaFire scraper](mangafire-scraper.md) — working selectors, CDN proxy fix, reader embed fallback, Cloudflare keyword-search block
 - [Atsumaru/atsu.moe provider](atsu-provider.md) — Typesense API at atsu.moe + WeebCentral chapters; covers proxied via proxy-image; chapter images Cloudflare-protected so always use embedUrl iframe fallback
-- [WeebCentral scraper](weebcentral-scraper.md) — HX-Request:true bypasses Cloudflare; use GET / for home, POST /search/simple for search; covers reconstruct from ULID via temp.compsci88.com CDN
+- [WeebCentral scraper](weebcentral-scraper.md) — HX-Request:true bypasses Cloudflare; homepage uses `article[data-tip]` cheerio selector for titles+chapters; chapter images load dynamically (no server-side extraction possible)
+- [jsPDF unit fix](jspdf-unit-fix.md) — use `unit: "pt"` with 0.75x px→pt conversion; `unit: "px"` causes black bars in output PDF
+- [Mobile nav bottom offset](mobile-nav-offset.md) — MobileNav is h-14 (56px); floating/fixed download buttons must use `bottom-20` (80px) minimum to clear it; `bottom-6` gets hidden behind the nav

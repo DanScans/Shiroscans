@@ -222,18 +222,24 @@ export default function ManhwaSeriesDetailPage() {
               await new Promise<void>((resolve) => {
                 const img = new Image();
                 img.onload = () => {
-                  const w = img.naturalWidth;
-                  const h = img.naturalHeight;
+                  const w = img.naturalWidth || 800;
+                  const h = img.naturalHeight || 1200;
                   const canvas = document.createElement("canvas");
-                  canvas.width = w; canvas.height = h;
-                  canvas.getContext("2d")!.drawImage(img, 0, 0);
-                  const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+                  canvas.width = w;
+                  canvas.height = h;
+                  const ctx = canvas.getContext("2d")!;
+                  ctx.fillStyle = "#ffffff";
+                  ctx.fillRect(0, 0, w, h);
+                  ctx.drawImage(img, 0, 0, w, h);
+                  const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+                  const wPt = w * 0.75;
+                  const hPt = h * 0.75;
                   if (!pdf) {
-                    pdf = new jsPDF({ orientation: h >= w ? "portrait" : "landscape", unit: "px", format: [w, h], compress: true });
+                    pdf = new jsPDF({ orientation: hPt >= wPt ? "portrait" : "landscape", unit: "pt", format: [wPt, hPt], compress: true });
                   } else {
-                    pdf.addPage([w, h], h >= w ? "portrait" : "landscape");
+                    pdf.addPage([wPt, hPt], hPt >= wPt ? "portrait" : "landscape");
                   }
-                  pdf.addImage(dataUrl, "JPEG", 0, 0, w, h);
+                  pdf.addImage(dataUrl, "JPEG", 0, 0, wPt, hPt);
                   URL.revokeObjectURL(objUrl);
                   resolve();
                 };
@@ -440,7 +446,7 @@ export default function ManhwaSeriesDetailPage() {
         </div>
 
         {downloadMode && selectedChapIds.size > 0 && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 w-full max-w-sm">
+          <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 w-full max-w-sm">
             <button onClick={downloadSelected} disabled={downloading}
               className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-primary font-bold text-sm text-white shadow-2xl shadow-primary/30 disabled:opacity-60 transition-all">
               <Download className="w-4 h-4" />

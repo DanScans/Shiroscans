@@ -1,8 +1,10 @@
 import { useEffect, useState, useRef } from "react";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+const LATEST_PER_PAGE = 10;
 
 function proxyImg(url: string): string {
   if (!url) return "";
@@ -131,6 +133,7 @@ function LatestRow({ item }: { item: WCSeries }) {
           {(item.genres?.length ?? 0) > 0 && (
             <p className="text-[10px] text-white/30 line-clamp-1">{item.genres.slice(0, 3).join(" · ")}</p>
           )}
+          {item.status && <p className="text-[10px] text-white/25">{item.status}</p>}
         </div>
       </div>
     </Link>
@@ -181,6 +184,7 @@ function SkeletonRow() {
 export default function MangaHomePage() {
   const [homeData, setHomeData] = useState<{ featured: WCSeries[]; popular: WCSeries[]; latest: WCSeries[] } | null>(null);
   const [homeLoading, setHomeLoading] = useState(true);
+  const [latestPage, setLatestPage] = useState(1);
 
   useEffect(() => {
     fetch(`${BASE}/api/weebcentral/home`)
@@ -192,9 +196,18 @@ export default function MangaHomePage() {
 
   const featured = homeData?.featured ?? [];
   const popular = homeData?.popular ?? [];
-  const latest = homeData?.latest ?? [];
+  const allLatest = homeData?.latest ?? [];
 
   const carouselItems = featured.length > 0 ? featured : popular;
+
+  const totalLatestPages = Math.max(1, Math.ceil(allLatest.length / LATEST_PER_PAGE));
+  const latestStart = (latestPage - 1) * LATEST_PER_PAGE;
+  const latestItems = allLatest.slice(latestStart, latestStart + LATEST_PER_PAGE);
+
+  function goLatestPage(p: number) {
+    setLatestPage(Math.max(1, Math.min(totalLatestPages, p)));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   return (
     <div className="bg-[#07070d] min-h-screen">
@@ -226,9 +239,28 @@ export default function MangaHomePage() {
           <div>
             {homeLoading
               ? Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
-              : latest.map((item, i) => <LatestRow key={item.id || i} item={item} />)
+              : latestItems.map((item, i) => <LatestRow key={item.id || i} item={item} />)
             }
           </div>
+          {!homeLoading && allLatest.length > 0 && (
+            <div className="flex items-center justify-center gap-3 mt-4 pt-3 border-t border-white/[0.05]">
+              <button
+                onClick={() => goLatestPage(latestPage - 1)}
+                disabled={latestPage <= 1}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white/50 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded-lg hover:bg-white/[0.05]"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" /> Prev
+              </button>
+              <span className="text-xs text-white/40 font-semibold">Page {latestPage} / {totalLatestPages}</span>
+              <button
+                onClick={() => goLatestPage(latestPage + 1)}
+                disabled={latestPage >= totalLatestPages}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-white/50 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded-lg hover:bg-white/[0.05]"
+              >
+                Next <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </section>
 
         <section className="pt-4 pb-10">
