@@ -168,6 +168,47 @@ export default function MangaSeriesDetailPage() {
     else setSelectedChapIds(new Set(filteredChapters.map((c) => c.id)));
   }
 
+  async function buildPdf(pages: string[], proxyEndpoint: string): Promise<jsPDF | null> {
+    let pdf: jsPDF | null = null;
+    for (let pi = 0; pi < pages.length; pi++) {
+      try {
+        const proxyUrl = `${proxyEndpoint}?url=${encodeURIComponent(pages[pi])}`;
+        const imgRes = await fetch(proxyUrl);
+        if (!imgRes.ok) continue;
+        const blob = await imgRes.blob();
+        const objUrl = URL.createObjectURL(blob);
+        await new Promise<void>((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            const w = img.naturalWidth || 800;
+            const h = img.naturalHeight || 1200;
+            const canvas = document.createElement("canvas");
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext("2d")!;
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+            const wPt = w * 0.75;
+            const hPt = h * 0.75;
+            if (!pdf) {
+              pdf = new jsPDF({ orientation: hPt >= wPt ? "portrait" : "landscape", unit: "pt", format: [wPt, hPt], compress: true });
+            } else {
+              pdf.addPage([wPt, hPt], hPt >= wPt ? "portrait" : "landscape");
+            }
+            pdf.addImage(dataUrl, "JPEG", 0, 0, wPt, hPt);
+            URL.revokeObjectURL(objUrl);
+            resolve();
+          };
+          img.onerror = () => { URL.revokeObjectURL(objUrl); resolve(); };
+          img.src = objUrl;
+        });
+      } catch {}
+    }
+    return pdf;
+  }
+
   async function downloadSelected() {
     const chapters = filteredChapters.filter((c) => selectedChapIds.has(c.id));
     if (!window.confirm(`Download ${chapters.length} chapter${chapters.length !== 1 ? "s" : ""} as PDF?`)) return;
@@ -178,49 +219,31 @@ export default function MangaSeriesDetailPage() {
         const ch = chapters[ci];
         setDownloadProgress({ current: ci, total: chapters.length });
         try {
+          // Step 1 – try WeebCentral
           const res = await fetch(`${BASE}/api/weebcentral/read/${ch.id}`);
           const data = await res.json();
-          const pages: string[] = data.pages ?? [];
+          let pages: string[] = data.pages ?? [];
+          let proxyEndpoint = `${BASE}/api/weebcentral/proxy-image`;
+
+          // Step 2 – WeebCentral blocked (Cloudflare) → try MangaDex mirror
           if (pages.length === 0) {
-            toast({ description: `Chapter ${ch.number}: images are browser-protected and can't be downloaded.`, variant: "destructive" });
-            continue;
-          }
-          let pdf: jsPDF | null = null;
-          for (let pi = 0; pi < pages.length; pi++) {
+            toast({ description: `Ch.${ch.number}: protected source, trying mirror…` });
             try {
-              const proxyUrl = `${BASE}/api/weebcentral/proxy-image?url=${encodeURIComponent(pages[pi])}`;
-              const imgRes = await fetch(proxyUrl);
-              const blob = await imgRes.blob();
-              const objUrl = URL.createObjectURL(blob);
-              await new Promise<void>((resolve) => {
-                const img = new Image();
-                img.onload = () => {
-                  const w = img.naturalWidth || 800;
-                  const h = img.naturalHeight || 1200;
-                  const canvas = document.createElement("canvas");
-                  canvas.width = w;
-                  canvas.height = h;
-                  const ctx = canvas.getContext("2d")!;
-                  ctx.fillStyle = "#ffffff";
-                  ctx.fillRect(0, 0, w, h);
-                  ctx.drawImage(img, 0, 0, w, h);
-                  const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
-                  const wPt = w * 0.75;
-                  const hPt = h * 0.75;
-                  if (!pdf) {
-                    pdf = new jsPDF({ orientation: hPt >= wPt ? "portrait" : "landscape", unit: "pt", format: [wPt, hPt], compress: true });
-                  } else {
-                    pdf.addPage([wPt, hPt], hPt >= wPt ? "portrait" : "landscape");
-                  }
-                  pdf.addImage(dataUrl, "JPEG", 0, 0, wPt, hPt);
-                  URL.revokeObjectURL(objUrl);
-                  resolve();
-                };
-                img.onerror = () => { URL.revokeObjectURL(objUrl); resolve(); };
-                img.src = objUrl;
-              });
+              const mdxRes = await fetch(
+                `${BASE}/api/mangadex/chapter-images?title=${encodeURIComponent(series?.title ?? "")}&chapter=${ch.number}`
+              );
+              const mdxData = await mdxRes.json();
+              pages = mdxData.pages ?? [];
+              proxyEndpoint = `${BASE}/api/mangadex/proxy-image`;
             } catch {}
           }
+
+          if (pages.length === 0) {
+            toast({ description: `Chapter ${ch.number}: not available on any source.`, variant: "destructive" });
+            continue;
+          }
+
+          const pdf = await buildPdf(pages, proxyEndpoint);
           if (pdf) {
             const safeTitle = (series?.title ?? "Chapter").replace(/[/\\?%*:|"<>]/g, "-");
             (pdf as jsPDF).save(`${safeTitle}_Ch${String(ch.number).padStart(3, "0")}.pdf`);

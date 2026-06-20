@@ -239,6 +239,81 @@ router.get("/mangadex/search", async (req: Request, res: Response): Promise<void
   }
 });
 
+// GET /api/mangadex/chapter-images?title=&chapter=
+// Resolves WeebCentral (or any) series title + chapter number → MangaDex image URLs.
+// Used as a fallback when the primary source cannot serve images server-side.
+router.get("/mangadex/chapter-images", async (req: Request, res: Response): Promise<void> => {
+  const title = String(req.query.title ?? "").trim();
+  const chapterRaw = String(req.query.chapter ?? "").trim();
+  if (!title || !chapterRaw) { res.status(400).json({ error: "title and chapter are required", pages: [] }); return; }
+
+  const cacheKey = `mdx:ci:${title.toLowerCase()}:${chapterRaw}`;
+  try {
+    const data = await withCache(cacheKey, 30 * 60 * 1000, async () => {
+      // 1. Search for the manga by title
+      const searchRes = await mdxFetch<{ data: MDXManga[] }>("/manga", {
+        title,
+        limit: "5",
+        "contentRating[]": ["safe", "suggestive", "erotica"],
+        "includes[]": [],
+        hasAvailableChapters: "true",
+      });
+
+      if (!searchRes.data.length) return { pages: [] };
+
+      // Pick the best match: prefer exact (case-insensitive) title match, else first result
+      const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const target = normalise(title);
+      const best = searchRes.data.find((m) =>
+        Object.values(m.attributes.title).some((t) => normalise(t) === target)
+      ) ?? searchRes.data[0];
+
+      const mangaId = best.id;
+
+      // 2. Fetch chapter feed.
+      // NOTE: chapter= filter causes 400 on MangaDex; URLSearchParams percent-encodes brackets
+      // but MangaDex accepts them. Build URL manually to control offset precisely.
+      const chapterNum = parseFloat(chapterRaw);
+      type FeedChapter = { id: string; attributes: { chapter: string | null; externalUrl: string | null; pages: number } };
+
+      // Fetch up to 40 chapters starting near the target chapter (offset-based)
+      const estimatedOffset = Math.max(0, Math.floor(chapterNum) - 5);
+      const feedUrl = `${MDX_API}/manga/${mangaId}/feed?limit=40&offset=${estimatedOffset}&translatedLanguage[]=en&order[chapter]=asc&contentRating[]=safe&contentRating[]=suggestive`;
+      const feedRaw = await fetch(feedUrl, { headers: MDX_HEADERS, signal: AbortSignal.timeout(20000) });
+      if (!feedRaw.ok) throw new Error(`MangaDex feed returned ${feedRaw.status}`);
+      const feedRes = await feedRaw.json() as { data: FeedChapter[]; total: number };
+
+      // Filter out external-only chapters with no pages
+      const valid = feedRes.data.filter((c: FeedChapter) => !c.attributes.externalUrl && (c.attributes.pages ?? 0) > 0);
+      if (!valid.length) return { pages: [] as string[] };
+
+      // Pick the chapter whose number is closest to the requested one
+      const best2 = valid.reduce((prev: FeedChapter, curr: FeedChapter) => {
+        const pd = Math.abs(parseFloat(prev.attributes.chapter ?? "0") - chapterNum);
+        const cd = Math.abs(parseFloat(curr.attributes.chapter ?? "0") - chapterNum);
+        return cd < pd ? curr : prev;
+      });
+
+      // 3. Get at-home server
+      const atHome = await mdxFetch<{
+        baseUrl: string;
+        chapter: { hash: string; data: string[] };
+      }>(`/at-home/server/${best2.id}`);
+
+      const pages = atHome.chapter.data.map(
+        (f) => `${atHome.baseUrl}/data/${atHome.chapter.hash}/${f}`,
+      );
+
+      return { mangaId, mdxChapterId: best2.id, pages };
+    });
+
+    res.json(data);
+  } catch (err) {
+    console.error("[MangaDex] chapter-images error:", err);
+    res.status(502).json({ error: "Failed to resolve chapter images", pages: [] });
+  }
+});
+
 // GET /api/mangadex/proxy-image?url=  – proxy MangaDex CDN images (avoids CORS)
 router.get("/mangadex/proxy-image", async (req: Request, res: Response): Promise<void> => {
   const url = String(req.query.url ?? "");

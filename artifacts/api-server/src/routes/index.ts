@@ -12,6 +12,7 @@ import ratingsRouter from "./ratings";
 import commentsRouter from "./comments";
 import mangafireRouter from "./mangafire";
 import weebcentralRouter from "./weebcentral";
+import mangadexRouter from "./mangadex";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(ratingsRouter);
 router.use(commentsRouter);
 router.use(mangafireRouter);
 router.use(weebcentralRouter);
+router.use(mangadexRouter);
 
 export default router;
